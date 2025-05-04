@@ -1,5 +1,5 @@
 # import abc
-from pymilvus import MilvusClient, DataType
+from pymilvus import MilvusClient, DataType, AnnSearchRequest, RRFRanker
 # from typing import Callable
 from src.papers.utils.models import Models
 from neo4j import GraphDatabase
@@ -26,18 +26,40 @@ class Milvus:
     def insert(self, data: list):
         self.milvus_client.insert(collection_name=self.collection_name, data=data)
         
-    def search(self, text: str, output_fields: list, filter: str= "", limit: int=10):
-        search_res = self.milvus_client.search(
-            collection_name=self.collection_name,
-            data=[
-                self.emb_text(text)
-            ],  
-            limit=limit, 
-            filter=filter,
-            search_params={"metric_type": self.metric_type, "params": {}},  # Inner product distance
-            output_fields=output_fields, #["Abstract"],  # Return the text field
-        )
-        return search_res[0]
+    def search(self, text: str, output_fields: list, limit: int=10, hybrid: bool=False, hybrid_fields: List=[]):
+        if hybrid:
+            requests = []
+            for field in hybrid_fields:
+                search_param = {
+                    "data": [self.emb_text(text)],
+                    "adds_field": field,
+                    "param": {
+                        "metric_type": "IP",
+                        "params": {"nprobe": 10}
+                    },
+                    "limit": limit
+                }                   
+                requests.append(AnnSearchRequest(**search_param))
+                
+            ranker = RRFRanker()
+            response = self.milvus_client.hybrid_search(
+                collection_name=self.collection_name,
+                reqs=requests,
+                ranker=ranker,
+                limit=limit
+            )          
+            return response[0]
+        else:
+            search_res = self.milvus_client.search(
+                collection_name=self.collection_name,
+                data=[
+                    self.emb_text(text)
+                ],  
+                limit=limit, 
+                search_params={"metric_type": self.metric_type, "params": {}},  # Inner product distance
+                output_fields=output_fields, #["Abstract"],  # Return the text field
+            )
+            return search_res[0]
     
     def emb_text(self, text:str):
         embedding = self.model.encode([text], normalize_embeddings=True)
@@ -48,12 +70,12 @@ class Milvus:
             self.__create_schema_and_index()
             self.milvus_client.create_collection(
                 collection_name=self.collection_name,
-                dimension=self.model.get_sentence_embedding_dimension(),
-                primary_field_name="id",
-                id_type="int",    
-                metric_type=self.metric_type,
-                consistency_level="Strong",  # Strong consistency level
-                auto_id=True,
+                # dimension=self.model.get_sentence_embedding_dimension(),
+                # primary_field_name="id",
+                # id_type="int",    
+                # metric_type=self.metric_type,
+                # consistency_level="Strong",  # Strong consistency level
+                # auto_id=True,
                 schema=self.schema,
                 index_params=self.index_params,
             )
@@ -79,16 +101,16 @@ class Milvus:
                 self.schema.add_field(
                     field_name=field["field_name"], 
                     datatype=field["datatype"], 
-                    is_primerary=field["is_primary"], 
+                    is_primary=field["is_primary"], 
                     dim=self.model.get_sentence_embedding_dimension(),
                 )                  
                 index_fields.append(field)
             else:
-                self.schema.add_field(
-                    field_name=field["field_name"], 
-                    datatype=field["datatype"], 
-                    is_primerary=field["is_primary"], 
-                )     
+                self.schema.add_field(**field)
+                    # field_name=field["field_name"], 
+                    # datatype=field["datatype"], 
+                    # is_primary=field["is_primary"], 
+                # )     
                                 
         self.index_params = self.milvus_client.prepare_index_params()
         for field in index_fields:

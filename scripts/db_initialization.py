@@ -12,10 +12,10 @@ def start():
     EXTENDED_CRAWLER_DATA_PATH = os.getenv("EXTENDED_CRAWLER_DATA_PATH")
     MILVUS_DB = os.getenv("MILVUS_DB")
     MILVUS_COLLECTION = os.getenv("MILVUS_COLLECTION")
-    NEO4J_URI = os.getenv("NEO4J_URI")
-    NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
-    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
-    NEO4J_DATABASE = os.getenv("NEO4J_DATABASE")
+    # NEO4J_URI = os.getenv("NEO4J_URI")
+    # NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
+    # NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+    # NEO4J_DATABASE = os.getenv("NEO4J_DATABASE")
 
     print(MILVUS_COLLECTION)
 
@@ -35,25 +35,25 @@ def start():
     ]
     collection_schema_field=[
         {"field_name": "id", "datatype": DataType.INT64, "is_primary": True},
-        {"field_name": "Abstract", "datatype": DataType.STRING, "is_primary": False},
-        {"field_name": "Authors and Institutions", "datatype": DataType.ARRAY, "is_primary": False},
-        {"field_name": "Citations S2", "datatype": DataType.ARRAY, "is_primary": False},
-        {"field_name": "S2 Paper ID", "datatype": DataType.STRING, "is_primary": False},
-        {"field_name": "TLDR", "datatype": DataType.STRING, "is_primary": False},
+        {"field_name": "Abstract", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False},
+        {"field_name": "AbstractVector", "datatype": DataType.FLOAT_VECTOR,"is_primary": False},
+        # {"field_name": "Authors_and_Institutions", "datatype": DataType.ARRAY, "is_primary": False},
+        # {"field_name": "Citations_S2", "datatype": DataType.ARRAY, "is_primary": False},
+        {"field_name": "S2_Paper_ID", "datatype": DataType.VARCHAR, "max_length": 100, "is_primary": False},
+        {"field_name": "TLDR", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False},
         {"field_name": "TLDRVector", "datatype": DataType.FLOAT_VECTOR, "is_primary": False},
-        {"field_name": "Title", "datatype": DataType.STRING, "is_primary": False},
+        {"field_name": "Title", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False},
         {"field_name": "TitleVector", "datatype": DataType.FLOAT_VECTOR, "is_primary": False},
-        {"field_name": "Conference", "datatype": DataType.STRING, "is_primary": False},
-        {"field_name": "Year", "datatype": DataType.STRING, "is_primary": False},
-        {"field_name": "KeyConcepts", "datatype": DataType.STRING, "is_primary": False},
+        {"field_name": "Year", "datatype": DataType.VARCHAR, "max_length": 4, "is_primary": False},
+        {"field_name": "KeyConcepts", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False},
         {"field_name": "KeyConceptsVector", "datatype": DataType.FLOAT_VECTOR, "is_primary": False},
-        {"field_name": "Conference", "datatype": DataType.STRING, "is_primary": False},
+        {"field_name": "Conference", "datatype": DataType.VARCHAR, "max_length": 100, "is_primary": False},
     ]
 
     print("Reading papers from crawler data...")
 
     # Get dataframe with needed data from crawler json
-    df_abstracts = get_extended_crawler_data_df(extended_crawler_data_path, extended_crawler_data_cols)
+    df_abstracts = get_extended_crawler_data_df(extended_crawler_data_path, extended_crawler_data_cols)[0:10]
 
     print("Extracting key concepts...")
     df_abstracts_with_keywords = get_key_concepts(df_abstracts)

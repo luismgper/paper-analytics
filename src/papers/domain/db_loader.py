@@ -52,7 +52,7 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
           
         
         data.append({
-            "S2 Paper ID": row["S2 Paper ID"], 
+            "S2_Paper_ID": row["S2 Paper ID"], 
             "Title": row["Title"] if row["Title"] else None,
             "TitleVector": milvus_client.emb_text(row["Title"]) if row["Title"] else None,
             "Abstract": row["Abstract"] if row["Abstract"] else None, 
@@ -60,7 +60,7 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
             "TLDR": row["TLDR"] if row["TLDR"] else None,
             "TLDRVector": milvus_client.emb_text(row["TLDR"]) if row["TLDR"] else None,
             "Year": row["Year"],
-            "Authors and Institutions": row["Authors and Institutions"],
+            # "Authors and Institutions": row["Authors and Institutions"],
             "KeyConcepts": row["KeyConcepts"] if row["KeyConcepts"] else None,
             "KeyConceptsVector": milvus_client.emb_text(row["KeyConcepts"]) if row["KeyConcepts"] else None,
             "Conference": row["Conference"]        
