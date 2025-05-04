@@ -53,7 +53,7 @@ def start():
     print("Reading papers from crawler data...")
 
     # Get dataframe with needed data from crawler json
-    df_abstracts = get_extended_crawler_data_df(extended_crawler_data_path, extended_crawler_data_cols)[0:10]
+    df_abstracts = get_extended_crawler_data_df(extended_crawler_data_path, extended_crawler_data_cols)
 
     print("Extracting key concepts...")
     df_abstracts_with_keywords = get_key_concepts(df_abstracts)

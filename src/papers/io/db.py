@@ -32,12 +32,12 @@ class Milvus:
             for field in hybrid_fields:
                 search_param = {
                     "data": [self.emb_text(text)],
-                    "adds_field": field,
+                    "anns_field": field,
                     "param": {
                         "metric_type": "IP",
                         "params": {"nprobe": 10}
                     },
-                    "limit": limit
+                    "limit": limit,
                 }                   
                 requests.append(AnnSearchRequest(**search_param))
                 
@@ -46,8 +46,10 @@ class Milvus:
                 collection_name=self.collection_name,
                 reqs=requests,
                 ranker=ranker,
-                limit=limit
+                limit=limit,
+                output_fields=output_fields,
             )          
+            print(response)
             return response[0]
         else:
             search_res = self.milvus_client.search(
@@ -56,6 +58,7 @@ class Milvus:
                     self.emb_text(text)
                 ],  
                 limit=limit, 
+                anns_field="Abstract",
                 search_params={"metric_type": self.metric_type, "params": {}},  # Inner product distance
                 output_fields=output_fields, #["Abstract"],  # Return the text field
             )
