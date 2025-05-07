@@ -111,9 +111,6 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
         #         "Authors and Institutions": row["Authors and Institutions"],
         #         "Conference": row["Conference"]        
         #     }) 
-    print("Inserting vector data...")                  
-    if len(data) != 0:
-        milvus_client.insert(data=data)   
     print("Finished inserting")        
         
 def get_key_concepts(df_abstracts: pl.DataFrame):

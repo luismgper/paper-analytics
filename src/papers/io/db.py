@@ -22,7 +22,6 @@ class Milvus:
         self.alias = alias
         self.host = host
         self.port = port
-        print(f"alias {alias}, host {host}, port {port}")
         connections.connect(
             alias=self.alias,
             host=self.host,
