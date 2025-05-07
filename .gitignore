@@ -5,7 +5,11 @@ build/
 dist/
 wheels/
 *.egg-info
+*.ipynb
+*.db
+*.lock
 
 # Virtual environments
 .venv
 .env
+volumes
