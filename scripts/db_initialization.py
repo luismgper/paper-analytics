@@ -12,6 +12,9 @@ def start():
     EXTENDED_CRAWLER_DATA_PATH = os.getenv("EXTENDED_CRAWLER_DATA_PATH")
     MILVUS_DB = os.getenv("MILVUS_DB")
     MILVUS_COLLECTION = os.getenv("MILVUS_COLLECTION")
+    MILVUS_ALIAS = os.getenv("MILVUS_ALIAS")
+    MILVUS_HOST = os.getenv("MILVUS_HOST")
+    MILVUS_PORT = os.getenv("MILVUS_PORT")
     # NEO4J_URI = os.getenv("NEO4J_URI")
     # NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
     # NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
@@ -35,18 +38,18 @@ def start():
     ]
     collection_schema_field=[
         {"field_name": "id", "datatype": DataType.INT64, "is_primary": True},
-        {"field_name": "Abstract", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False},
+        {"field_name": "Abstract", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False, "nullable": True},
         {"field_name": "AbstractVector", "datatype": DataType.FLOAT_VECTOR,"is_primary": False},
         # {"field_name": "Authors_and_Institutions", "datatype": DataType.ARRAY, "is_primary": False},
         # {"field_name": "Citations_S2", "datatype": DataType.ARRAY, "is_primary": False},
-        {"field_name": "S2_Paper_ID", "datatype": DataType.VARCHAR, "max_length": 100, "is_primary": False},
-        {"field_name": "TLDR", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False},
+        {"field_name": "S2_Paper_ID", "datatype": DataType.VARCHAR, "max_length": 100, "is_primary": False, "nullable": True},
+        {"field_name": "TLDR", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False, "nullable": True},
         {"field_name": "TLDRVector", "datatype": DataType.FLOAT_VECTOR, "is_primary": False},
-        {"field_name": "Title", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False},
+        {"field_name": "Title", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False, "nullable": True},
         {"field_name": "TitleVector", "datatype": DataType.FLOAT_VECTOR, "is_primary": False},
-        {"field_name": "Year", "datatype": DataType.VARCHAR, "max_length": 4, "is_primary": False},
-        {"field_name": "KeyConcepts", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False},
-        {"field_name": "KeyConceptsVector", "datatype": DataType.FLOAT_VECTOR, "is_primary": False},
+        {"field_name": "Year", "datatype": DataType.VARCHAR, "max_length": 4, "is_primary": False, "nullable": True},
+        {"field_name": "KeyConcepts", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False, "nullable": True},
+        {"field_name": "KeyConceptsVector", "datatype": DataType.FLOAT_VECTOR, "is_primary": False, "nullable": True},
         {"field_name": "Conference", "datatype": DataType.VARCHAR, "max_length": 100, "is_primary": False},
     ]
 
@@ -61,7 +64,16 @@ def start():
     print("Initializing vector database...")
 
     # Initialize vector db client, db and collection
-    milvus_client = Milvus(MILVUS_DB, MILVUS_COLLECTION, schema_fields=collection_schema_field, new_collection=True)    
+    milvus_client = Milvus(
+        # db=MILVUS_DB, 
+        collection=MILVUS_COLLECTION, 
+        alias=MILVUS_ALIAS,
+        host=MILVUS_HOST,
+        port=MILVUS_PORT,
+        schema_fields=collection_schema_field, 
+        new_collection=True
+    )    
+    # milvus_client = Milvus(MILVUS_DB, MILVUS_COLLECTION, schema_fields=collection_schema_field, new_collection=True)    
     load_data_to_vector_db(df_data_to_insert=df_abstracts_with_keywords, milvus_client=milvus_client)
 
     # Initialize graph db client

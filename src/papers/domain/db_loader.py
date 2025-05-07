@@ -54,18 +54,25 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
         data.append({
             "S2_Paper_ID": row["S2 Paper ID"], 
             "Title": row["Title"] if row["Title"] else None,
-            "TitleVector": milvus_client.emb_text(row["Title"]) if row["Title"] else None,
+            "TitleVector": milvus_client.emb_text(row["Title"]) if row["Title"] else milvus_client.emb_text(""),
             "Abstract": row["Abstract"] if row["Abstract"] else None, 
-            "AbstractVector": milvus_client.emb_text(row["Abstract"]) if row["Abstract"] else None, 
+            "AbstractVector": milvus_client.emb_text(row["Abstract"]) if row["Abstract"] else milvus_client.emb_text(""), 
             "TLDR": row["TLDR"] if row["TLDR"] else None,
-            "TLDRVector": milvus_client.emb_text(row["TLDR"]) if row["TLDR"] else None,
+            "TLDRVector": milvus_client.emb_text(row["TLDR"]) if row["TLDR"] else milvus_client.emb_text(""),
             "Year": row["Year"],
             # "Authors and Institutions": row["Authors and Institutions"],
             "KeyConcepts": row["KeyConcepts"] if row["KeyConcepts"] else None,
-            "KeyConceptsVector": milvus_client.emb_text(row["KeyConcepts"]) if row["KeyConcepts"] else None,
+            "KeyConceptsVector": milvus_client.emb_text(row["KeyConcepts"]) if row["KeyConcepts"] else milvus_client.emb_text(""),
             "Conference": row["Conference"]        
         })         
-        
+        milvus_client.insert(data=data)
+        data = []
+        # if len(data) == 10:
+        #     print("Inserting vector data...")
+        #     milvus_client.insert(data=data)
+        #     data = []
+            
+            
         # if row["Abstract"]:
         #     data.append({
         #         "S2 Paper ID": row["S2 Paper ID"], 
@@ -103,11 +110,10 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
         #         "Year": row["Year"],
         #         "Authors and Institutions": row["Authors and Institutions"],
         #         "Conference": row["Conference"]        
-        #     })               
-        
-    print("Inserting vector data...")
-    milvus_client.insert(data=data)
-    
+        #     }) 
+    print("Inserting vector data...")                  
+    if len(data) != 0:
+        milvus_client.insert(data=data)   
     print("Finished inserting")        
         
 def get_key_concepts(df_abstracts: pl.DataFrame):

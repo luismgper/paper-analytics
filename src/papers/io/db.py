@@ -1,5 +1,5 @@
 # import abc
-from pymilvus import MilvusClient, DataType, AnnSearchRequest, RRFRanker
+from pymilvus import MilvusClient, DataType, AnnSearchRequest, RRFRanker, connections
 # from typing import Callable
 from src.papers.utils.models import Models
 from neo4j import GraphDatabase
@@ -8,8 +8,29 @@ from typing import Any, Dict, List, Optional, Tuple
 
 class Milvus:
     
-    def __init__(self, db: str, collection: str, schema_fields: List=None, new_collection: bool=False, metric_type: str="IP"):
-        self.milvus_client = MilvusClient(db)            
+    def __init__(
+        self, 
+        collection: str, 
+        alias: str,
+        host: str,
+        port: str,
+        db: str=None, 
+        schema_fields: List=None, 
+        new_collection: bool=False, 
+        metric_type: str="IP"
+    ):
+        self.alias = alias
+        self.host = host
+        self.port = port
+        print(f"alias {alias}, host {host}, port {port}")
+        connections.connect(
+            alias=self.alias,
+            host=self.host,
+            port=self.port
+        )        
+        self.db = db if db else f"http://{self.host}:{self.port}"
+        self.milvus_client = MilvusClient(self.db)
+        
         model = Models()
         self.model = model.get_milvus_embedding_model()               
         self.metric_type = metric_type
