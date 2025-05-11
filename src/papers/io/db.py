@@ -46,7 +46,7 @@ class Milvus:
     def insert(self, data: list):
         self.milvus_client.insert(collection_name=self.collection_name, data=data)
         
-    def search(self, text: str, output_fields: list, limit: int=10, hybrid: bool=False, hybrid_fields: List=[]):
+    def search(self, text: str, output_fields: List, limit: int=10, hybrid: bool=False, hybrid_fields: List=[]):
         if hybrid:
             requests = []
             for field in hybrid_fields:
@@ -69,7 +69,6 @@ class Milvus:
                 limit=limit,
                 output_fields=output_fields,
             )          
-            print(response)
             return response[0]
         else:
             search_res = self.milvus_client.search(
