@@ -12,15 +12,21 @@ class RAG:
         self.milvus_client = milvus_client
         self.neo4j_client = neo4j_client
         self.llm = OllamaLLM(model=llm)        
+        self.llm_name = llm
         
     def query(self, query: str) -> str:
         context = self.__get_context(query)
-        summary = self.__summarize(context)
-        output = {
-            "context": context,
-            "summary": summary
-        }
-        return output["summary"]
+        documents = [document for paper in context for document in paper["documents"]]
+        details = [paper["details"] for paper in context]
+        
+        summary = self.__summarize(documents)
+        # output = {
+        #     "context": context,
+        #     "summary": summary
+        # }
+        
+        response = self.__build_query_response(summary, details)
+        return response
             
         # SYSTEM_PROMPT = """
         # Human: You are an AI assistant. You are able to find answers to the questions from the contextual passage snippets provided.
@@ -50,7 +56,7 @@ class RAG:
         # print(docs)
         chain = load_summarize_chain(self.llm, chain_type="map_reduce")
         summary = chain.invoke(docs)
-        return summary        
+        return summary["output_text"]     
     
     def __get_context(self, query: str) -> List:
         
@@ -63,7 +69,9 @@ class RAG:
                 "Title",
                 "TLDR",
                 "Abstract",
-                "KeyConcepts"
+                "KeyConcepts",
+                "Year",
+                "Conference",
             ],
             limit=10,
             hybrid=True,
@@ -75,17 +83,22 @@ class RAG:
             ]
         )
         
-        context_papers = []
+        context_papers_summarization = []
         splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=0)
         relevance_position = 0
         for paper in nn_papers:
+            
+            details = self.__get_paper_details(query, paper)
+            
             relevance_position += 1
             paper_context = f"""
                 Title: {paper["entity"]["Title"]}
                 TLDR: {paper["entity"]["TLDR"]}
                 Abstract: {paper["entity"]["Abstract"]}
             """                  
-            chunks = splitter.split_text(paper_context)            
+            
+            chunks = splitter.split_text(paper_context)
+            documents = []            
             for i, chunk in enumerate(chunks):
                 doc = Document(
                     page_content=chunk,
@@ -94,9 +107,14 @@ class RAG:
                         "chunk_index": i
                     }
                 )
-                context_papers.append(doc)                
+                documents.append(doc)                
             
-        return context_papers
+            context_papers_summarization.append({
+                "documents": documents,
+                "details": details,
+            })
+            
+        return context_papers_summarization
             # paper_context = f"""
             # #     Title: {paper["entity"]["Title"]}
             # #     Key concepts: {paper["entity"]["KeyConcepts"]}
@@ -133,8 +151,59 @@ class RAG:
         #     [f"Paper:\n {paper}" for paper in summarized_papers]
         # )
         # return context
+    def __get_paper_details(self, query: str, paper: dict) -> str:
         
+        # Summarize the paper data, and format the output
+        paper_context = f"""
+            Title: {paper["entity"]["Title"]}
+            Key concepts: {paper["entity"]["KeyConcepts"]}
+            TLDR: {paper["entity"]["TLDR"]}
+            Abstract: {paper["entity"]["Abstract"]}
+        """            
         
+        SYSTEM_PROMPT = """
+        Human: You are an AI assistant specialized in summarizing scientific papers. You only provide the summary of the topic without further wording.
+        """
+        
+        USER_PROMPT = f"""
+        Use the following paper data to provide a summary of the topic of the paper data enclosed in <context>.
+        \n
+        <context>
+        {paper_context}
+        </context>
+        \n
+        Empashized information related to the following query: {query} 
+        """
+        response: ChatResponse = chat(
+            model=self.llm_name,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": USER_PROMPT},
+            ],
+        )
+        print(response)     
+        return f"""
+        - Paper: {paper["entity"]["Title"]}
+        - Year: {paper["entity"]["Year"]}
+        - Conference {paper["entity"]["Conference"]}
+        - Summary: {response["message"]["content"]}
+        """
+        
+    def __build_query_response(self, summary: str, details: List[str]) -> str:
+        
+        paper_details = "\n".join(
+            [details for details in details]
+        )
+            
+        
+        response = f"""
+        ### Summary of query-related papers found
+        {summary}
+        
+        ### Paper details, sorted by relevance
+        {paper_details}
+        """
+        return response
 
     
     
