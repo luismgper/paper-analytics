@@ -79,3 +79,5 @@ def start():
     # Initialize graph db client
     # neo4j_client = Neo4j(NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD, NEO4J_DATABASE)
 
+if __name__ == "__main__":
+    start()

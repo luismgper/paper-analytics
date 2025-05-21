@@ -3,9 +3,11 @@ from ollama import chat, ChatResponse
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
 from langchain.chains.summarize import load_summarize_chain
-from langchain_community.llms import Ollama
+# from langchain_community.llms import Ollama
 from langchain_ollama import OllamaLLM
 from typing import List
+from src.papers.domain.citations_analyzer import CitationAnalyzer
+import polars as pl
 
 class RAG:
     def __init__(self, milvus_client: Milvus, neo4j_client: Neo4j, llm: str):
@@ -14,19 +16,27 @@ class RAG:
         self.llm = OllamaLLM(model=llm)        
         self.llm_name = llm
         
-    def query(self, query: str) -> str:
+    def query(self, query: str) -> List:
+        print("Getting RAG context...")
         context = self.__get_context(query)
         documents = [document for paper in context for document in paper["documents"]]
         details = [paper["details"] for paper in context]
+        papers = [paper["entity"] for paper in context]
         
+        print("Summarizing recovered papers....")
         summary = self.__summarize(documents)
+        
+        print()
+        paper_analytics = self.__analyze_papers(papers)
+        
         # output = {
         #     "context": context,
         #     "summary": summary
         # }
         
         response = self.__build_query_response(summary, details)
-        return response
+        
+        return response, paper_analytics
             
         # SYSTEM_PROMPT = """
         # Human: You are an AI assistant. You are able to find answers to the questions from the contextual passage snippets provided.
@@ -54,7 +64,7 @@ class RAG:
         # splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
         # docs = splitter.create_documents([text])
         # print(docs)
-        chain = load_summarize_chain(self.llm, chain_type="map_reduce")
+        chain = load_summarize_chain(self.llm, chain_type="map_reduce", verbose=False)
         summary = chain.invoke(docs)
         return summary["output_text"]     
     
@@ -84,7 +94,7 @@ class RAG:
         )
         
         context_papers_summarization = []
-        splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=0)
+        splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
         relevance_position = 0
         for paper in nn_papers:
             
@@ -92,9 +102,9 @@ class RAG:
             
             relevance_position += 1
             paper_context = f"""
-                Title: {paper["entity"]["Title"]}
-                TLDR: {paper["entity"]["TLDR"]}
-                Abstract: {paper["entity"]["Abstract"]}
+            Title: {paper["entity"]["Title"]}
+            TLDR: {paper["entity"]["TLDR"]}
+            Abstract: {paper["entity"]["Abstract"]}
             """                  
             
             chunks = splitter.split_text(paper_context)
@@ -110,14 +120,59 @@ class RAG:
                 documents.append(doc)                
             
             context_papers_summarization.append({
+                "entity": paper["entity"],
                 "documents": documents,
                 "details": details,
             })
             
         return context_papers_summarization
-            # paper_context = f"""
-            # #     Title: {paper["entity"]["Title"]}
-            # #     Key concepts: {paper["entity"]["KeyConcepts"]}
+    
+    def __analyze_papers(self, papers):
+        citations_analyzer = CitationAnalyzer(self.neo4j_client)
+        
+        print("Getting citations")
+        df_processed_papers = citations_analyzer.process_papers(papers)
+        
+        print("Analyzing papers")
+        df_cross_conference_citations = citations_analyzer.analyze_cross_conference_citations(df_processed_papers)
+        df_cross_country_citations = citations_analyzer.analyze_cross_country_citations(df_processed_papers)
+        
+        cross_country_citations_test = citations_analyzer.test_country_bias_by_conference(df_cross_country_citations)                
+        cross_conference_citations_test = citations_analyzer.test_conference_bias_by_conference(df_cross_conference_citations)
+        
+        # SYSTEM_PROMPT = """
+        # Human: You are an AI assistant specialized in reporting statistical findings without further wording or quesitons asked. Report as if the question was made by someone lacking statistics knowledge.
+        # """        
+        
+        # USER_PROMPT = f"""
+        # Use the following chi squared hypothesis test results to provide a summary of the findings done when checking citation patterns between conferences with the data enclosed in <context>. Provide interpretation over the data. Format the response in markdown.
+        # \n
+        # <context>
+        # {cross_conference_citations_test}
+        # </context>
+        # \n
+        # """
+        # response: ChatResponse = chat(
+        #     model=self.llm_name,
+        #     messages=[
+        #         {"role": "system", "content": SYSTEM_PROMPT},
+        #         {"role": "user", "content": USER_PROMPT},
+        #     ],
+        # )
+                
+        
+        analytics = {
+            "processed_papers": df_processed_papers,
+            "cross_conference_citations": df_cross_conference_citations,
+            "cross_country_citations": df_cross_country_citations,
+            "cross_country_citations_test": cross_country_citations_test,
+            "cross_conference_citations_test": cross_conference_citations_test,
+            # "cross_conference_citations_response": response,
+        }
+        print("Finished analyzing")
+        return analytics
+        
+            # paper_context = f"""df_cross_country"]["KeyConcepts"]}
             # #     TLDR: {paper["entity"]["TLDR"]}
             # #     Abstract: {paper["entity"]["Abstract"]}
             # # """      
@@ -153,6 +208,10 @@ class RAG:
         # return context
     def __get_paper_details(self, query: str, paper: dict) -> str:
         
+        #  If not paper TLDR or Abstract, return title
+        if not paper["entity"]["TLDR"] and not paper["entity"]["Abstract"]:
+            return paper["entity"]["Title"]
+        
         # Summarize the paper data, and format the output
         paper_context = f"""
             Title: {paper["entity"]["Title"]}
@@ -174,37 +233,27 @@ class RAG:
         \n
         Empashized information related to the following query: {query} 
         """
+        print(paper_context)
         response: ChatResponse = chat(
             model=self.llm_name,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": USER_PROMPT},
             ],
-        )
-        print(response)     
-        return f"""
-        - Paper: {paper["entity"]["Title"]}
-        - Year: {paper["entity"]["Year"]}
-        - Conference {paper["entity"]["Conference"]}
-        - Summary: {response["message"]["content"]}
-        """
+        )     
+        return f"| {paper["entity"]["Title"]} | {paper["entity"]["Year"]} | {paper["entity"]["Conference"]} | {response["message"]["content"].replace('\n', '')} |"
         
     def __build_query_response(self, summary: str, details: List[str]) -> str:
         
-        paper_details = "\n".join(
-            [details for details in details]
+        paper_details = (
+            "| Title | Year | Conference | Summary |\n"
+            "| --- | --- | --- | --- |\n" +
+            "\n".join(details)
         )
-            
         
-        response = f"""
-        ### Summary of query-related papers found
-        {summary}
-        
-        ### Paper details, sorted by relevance
-        {paper_details}
-        """
+        response = f"### Summary of query-related papers found \n{summary}\n### Paper details, sorted by relevance\n{paper_details}"
         return response
 
     
     
-          
+

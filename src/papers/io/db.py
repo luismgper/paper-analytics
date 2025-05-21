@@ -150,7 +150,8 @@ class Neo4j:
         self.username = username
         self.password = password
         self.database = database
-        self.driver = GraphDatabase.driver(self.uri, auth=(self.username, self.password), database=self.database)
+        self.driver = GraphDatabase.driver(self.uri, auth=(self.username, self.password))
+        # self.driver = GraphDatabase.driver(self.uri, auth=(self.username, self.password), database=self.database)
 
     def open(self):
         if not self.driver or self.is_driver_closed():
@@ -168,7 +169,7 @@ class Neo4j:
         except Exception:
             return True  # Probably closed            
         
-    def run_query(self, query: str, parameters: Optional[Dict[str, Any]] = None, write: bool = False) -> List[Dict[str, Any]]:
+    def run_query(self, query: str, database: Optional[str], parameters: Optional[Dict[str, Any]] = None, write: bool = False) -> List[Dict[str, Any]]:
         """
         Runs a Cypher query. Set write=True for write transactions.
         Returns a list of dicts with the result.
@@ -176,10 +177,11 @@ class Neo4j:
         def _run(tx):
             result = tx.run(query, parameters or {})
             return [record.data() for record in result]
-
-        self.driver.open()
+        if database != self.database:
+            self.database = database
+        self.open()
             
-        with self.driver.session() as session:
+        with self.driver.session(database=database) as session:
             if write:
                 return session.execute_write(_run)
             else:
