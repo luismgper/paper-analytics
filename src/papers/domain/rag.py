@@ -4,17 +4,49 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
 from langchain.chains.summarize import load_summarize_chain
 # from langchain_community.llms import Ollama
-from langchain_ollama import OllamaLLM
-from typing import List
+# from langchain_ollama import OllamaLLM
+from typing import List, Optional
 from src.papers.domain.citations_analyzer import CitationAnalyzer
 import polars as pl
+from pydantic import BaseModel
+from langchain_ollama import ChatOllama
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableParallel
+from langchain_core.prompts import ChatPromptTemplate
+
+class FilterOptions(BaseModel):
+    """
+    Class for filter option. 
+    - value corresponds for to the value to be used in filtering
+    - equal indicates if the condition indicates equality
+    - citation indicates if this condition is referred only to cited papers
+    """
+    value: str
+    equal: bool
+    citation: bool
+    
+class FilterParameters(BaseModel):
+    """
+    Class for filter saving filter parameters specified in a prompt
+    """
+    main_concept: str = None
+    authors: list[FilterOptions] = None
+    institutions: list[FilterOptions] = None
+    countries: list[FilterOptions] = None
+    years: list[FilterOptions] = None
+    conferences: list[FilterOptions] = None
+    
+class TopicCheck(BaseModel):
+    is_valid: bool
+    # reason: str    
 
 class RAG:
-    def __init__(self, milvus_client: Milvus, neo4j_client: Neo4j, llm: str):
+    def __init__(self, llm: str, milvus_client: Optional[Milvus] = None, neo4j_client: Optional[Neo4j] = None):
         self.milvus_client = milvus_client
         self.neo4j_client = neo4j_client
-        self.llm = OllamaLLM(model=llm)        
+        self.model = ChatOllama(model=llm, temperature=0.2, top_k=20, top_p=0.8)        
         self.llm_name = llm
+        # self.light_model = ChatOllama(model="qwen3:0.6b", temperature=0)  
         
     def query(self, query: str) -> List:
         print("Getting RAG context...")
@@ -24,43 +56,16 @@ class RAG:
         papers = [paper["entity"] for paper in context]
         
         print("Summarizing recovered papers....")
-        summary = self.__summarize(documents)
+        summary = self.summarize_multiple_texts(documents[:10])
         
-        print()
+        print("Analyzing papers")
         paper_analytics = self.__analyze_papers(papers)
-        
-        # output = {
-        #     "context": context,
-        #     "summary": summary
-        # }
-        
+               
         response = self.__build_query_response(summary, details)
         
-        return response, paper_analytics
-            
-        # SYSTEM_PROMPT = """
-        # Human: You are an AI assistant. You are able to find answers to the questions from the contextual passage snippets provided.
-        # """
-
-        # USER_PROMPT = f"""
-        # Use the following pieces of information enclosed in <context> tags to provide an answer to the question enclosed in <question> tags.
-        # <context>
-        # {context}
-        # </context>
-        # <question>
-        # {query}
-        # </question>
-        # """
-        # response: ChatResponse = chat(
-        #     model=self.llm,
-        #     messages=[
-        #         {"role": "system", "content": SYSTEM_PROMPT},
-        #         {"role": "user", "content": USER_PROMPT},
-        #     ],
-        # )
-        # return response["message"]["content"]        
+        return response, paper_analytics     
     
-    def __summarize(self, docs: List) -> str:
+    def summarize_multiple_texts(self, docs: List) -> str:
         # splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
         # docs = splitter.create_documents([text])
         # print(docs)
@@ -68,7 +73,37 @@ class RAG:
         summary = chain.invoke(docs)
         return summary["output_text"]     
     
+    def summarize_single_text(self, text: str) -> str:
+        SYSTEM_PROMPT = """
+        Human: You are an AI assistant specialized in summarizing scientific papers. You only provide the summary content without further wording.
+        """
+        
+        USER_PROMPT = f"""
+        Use the following paper data to provide a summary of the topic of the paper data enclosed in <context> keeping it less than 100 words long
+        \n
+        <context>
+        {text}
+        </context>
+        /no_think
+        \n
+        """
+        
+        response: ChatResponse = chat(
+            model=self.llm_name,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": USER_PROMPT},
+            ],
+        ) 
+        return response        
+    
     def __get_context(self, query: str) -> List:
+        
+        filter_parameters = self.__get_query_filter_conditions(query=query)
+        
+        print(f"Recovered filter parameters: {filter_parameters}")
+        
+        expr = self.__build_expr_for_rag(filter_parameters=filter_parameters)
         
         # An hybrid search will be done. The top papers for each kind of embedding will be retrieved.
         # Then a reranking will be done to retrieve the most similar ones taking into account every 
@@ -82,50 +117,245 @@ class RAG:
                 "KeyConcepts",
                 "Year",
                 "Conference",
+                "Summary"
             ],
-            limit=10,
+            limit=100,
             hybrid=True,
             hybrid_fields=[
                 "AbstractVector", 
                 "TitleVector", 
                 "TLDRVector",
                 "KeyConceptsVector"
-            ]
+            ],
+            expr=expr,
         )
+        print(len(nn_papers))
+        nn_papers = self.__filter_paper_adjustment_to_topic(nn_papers=nn_papers, filter_conditions=filter_parameters)
+        print(len(nn_papers))
+        return [paper["entity"] for paper in nn_papers]
         
-        context_papers_summarization = []
-        splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
-        relevance_position = 0
+        ##### Temporary disabled
+        if 1 == 2: 
+            context_papers_summarization = []
+            splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
+            relevance_position = 0
+            for paper in nn_papers:
+                print(paper)
+                details = self.__get_paper_details(query, paper)
+                
+                relevance_position += 1
+                paper_context = f"""
+                Title: {paper["entity"]["Title"]}
+                TLDR: {paper["entity"]["TLDR"]}
+                Abstract: {paper["entity"]["Abstract"]}
+                """                  
+                
+                chunks = splitter.split_text(paper_context)
+                documents = []            
+                for i, chunk in enumerate(chunks):
+                    doc = Document(
+                        page_content=chunk,
+                        metadata={
+                            "paper_id": relevance_position,
+                            "chunk_index": i
+                        }
+                    )
+                    documents.append(doc)                
+                
+                context_papers_summarization.append({
+                    "entity": paper["entity"],
+                    "documents": documents,
+                    "details": details,
+                })
+                
+            return context_papers_summarization
+    
+    def __get_query_filter_conditions(self, query: str) -> FilterParameters:
+        messages = [
+            SystemMessage("""You are a helpful assistant that uses only the input the user provides. Your role is to help research paper data related to the topics the user asks about.
+            Fields with list of FilterOptions type must be filled as follows:
+            - value: The value of the field to be filled
+            - equal: False if it is asked to be different from the value
+            - citation: If the field value refers to paper citations
+            Return JSON with (if not mentioned, leave it as None):
+            - main_concept (string). Topic of research
+            - years (list[FilterOptions]). Publish years
+            - authors (list[FilterOptions]). List of paper authors
+            - institutions (list[FilterOptions]). All must be valid institutions laike universities or corporations.
+            - countries (list[FilterOptions]). All must be valid countries. Translate them to usual abbreviaions like US for United Staes of America or DE for Germany
+            - conferences (list[FilterOptions]). List of valid conferences: IEEECloud, Middleware, SIGCOMM, eurosys
+            Example response for 2024 papers about spot instances with 100+ citations published in middleware. Authors must be from Harvard University. Cited papers must not be from Canada:
+            {{
+                "main_concept": "spot instances",
+                "authors": None,
+                "institutions": [{{ "value": "Harvard University", "equal": True, cit"ation: False}}],
+                "countries": [{{"value": "CA", "equal": False, "citation": True}}],
+                "years": [{{"value": "2025", "equal": True, "citation": False}}],
+                "conferences": [{{"value": "Middleware", "equal": True, "citation": False}}],
+            }}
+            /no_think
+            """),
+            HumanMessage(query),
+        ]
+        response = self.model.invoke(messages)
+        
+        messages_for_structure = [
+            messages[0],
+            HumanMessage(f""" Return JSON with (if not mentioned, leave it as None):
+            - value: The value of the field to be filled
+            - equal: False if it is asked to be different from the value
+            - citation: If the field value refers to paper citations
+            Return JSON with (if not mentioned, leave it as None):
+            - main_concept (string). Topic of research
+            - years (list[FilterOptions]). Publish years
+            - authors (list[FilterOptions]). List of paper authors
+            - institutions (list[FilterOptions]). All must be valid institutions laike universities or corporations.
+            - countries (list[FilterOptions]). All must be valid countries. Translate them to usual abbreviaions like US for United Staes of America or DE for Germany
+            - conferences (list[FilterOptions]). List of valid conferences: IEEECloud, Middleware, SIGCOMM, eurosys
+            Using these previous response:
+            {response} /no_think"""
+            )
+        ]
+        structured_response = self.model.with_structured_output(FilterParameters).invoke(messages_for_structure)
+        # print(response)
+        # print(structured_response)
+        
+        return structured_response
+           
+    def __build_expr_for_filter_field(self, filter_options: list[FilterOptions], field_name: str, json_field: bool = False) -> str:
+        expr = ""
+        in_expr = []
+        not_in_expr = []
+
+        if not filter_options:
+            return ""
+        
+        for filter_option in filter_options:
+            if not filter_option.citation:
+                if filter_option.equal:
+                    in_expr.append(filter_option.value)
+                else:
+                    not_in_expr.append(filter_option.value)
+                
+        if len(in_expr) > 0:
+            if len(expr) == 0:
+                if json_field:
+                    expr = f"json_contains_any({field_name}, {in_expr})"
+                else:
+                    expr = f"{field_name} in {in_expr}"
+            else:
+                if len(expr) == 0:
+                    if json_field:            
+                        expr += f"and json_contains_any({field_name}, {in_expr})"
+                    else:
+                        expr += f"and {field_name} in {in_expr}"
+
+        if len(not_in_expr) > 0:
+            if len(expr) == 0:
+                if json_field:
+                    expr = f"not json_contains_any({field_name}, {not_in_expr})"
+                else:
+                    expr = f"not {field_name} in {not_in_expr}"
+            else:
+                if len(expr) == 0:
+                    if json_field:            
+                        expr += f"and not json_contains_any({field_name}, {not_in_expr})"
+                    else:
+                        expr += f"and not {field_name} in {not_in_expr}"
+        return expr          
+    
+    def __build_expr_for_rag(self, filter_parameters: FilterParameters) -> str:
+        expr_years = self.__build_expr_for_filter_field(filter_options=filter_parameters.years, field_name="Year")
+        expr_authors = self.__build_expr_for_filter_field(filter_options=filter_parameters.authors, field_name="Authors", json_field=True)
+        expr_countries = self.__build_expr_for_filter_field(filter_options=filter_parameters.countries, field_name="Countries", json_field=True)
+        expr_institution = self.__build_expr_for_filter_field(filter_options=filter_parameters.institutions, field_name="Institutions", json_field=True)
+        expr_conferences = self.__build_expr_for_filter_field(filter_options=filter_parameters.conferences, field_name="Conferences")
+
+        expr = ""
+        if len(expr_years) > 0:
+            if len(expr) == 0:
+                expr = expr_years
+            else:
+                expr += " and " + expr_years
+                
+        if len(expr_authors) > 0:
+            if len(expr) == 0:
+                expr = expr_authors
+            else:
+                expr += " and " + expr_authors
+                
+        if len(expr_countries) > 0:
+            if len(expr) == 0:
+                expr = expr_countries
+            else:
+                expr += " and " + expr_countries
+                
+        if len(expr_institution) > 0:
+            if len(expr) == 0:
+                expr = expr_institution
+            else:
+                expr += " and " + expr_institution
+                
+        # if len(expr_conferences) > 0:
+        #     if len(expr) == 0:
+        #         expr = expr_conferences
+        #     else:
+        #         expr += " and " + expr_conferences                                
+
+        print(expr)     
+        return expr   
+    
+    def __filter_paper_adjustment_to_topic(self, nn_papers: list[dict], filter_conditions: FilterParameters) -> list[dict]:
+        # model = ChatOllama(model="qwen3:0.6b", temperature=0)  
+        valid_papers = []
+        index = 0
+        map_chain_elements = {}
         for paper in nn_papers:
+            entity = paper["entity"]
             
-            details = self.__get_paper_details(query, paper)
+            topic = filter_conditions.main_concept
             
-            relevance_position += 1
-            paper_context = f"""
-            Title: {paper["entity"]["Title"]}
-            TLDR: {paper["entity"]["TLDR"]}
-            Abstract: {paper["entity"]["Abstract"]}
-            """                  
-            
-            chunks = splitter.split_text(paper_context)
-            documents = []            
-            for i, chunk in enumerate(chunks):
-                doc = Document(
-                    page_content=chunk,
-                    metadata={
-                        "paper_id": relevance_position,
-                        "chunk_index": i
-                    }
-                )
-                documents.append(doc)                
-            
-            context_papers_summarization.append({
-                "entity": paper["entity"],
-                "documents": documents,
-                "details": details,
-            })
-            
-        return context_papers_summarization
+            model_with_structure = self.model.with_structured_output(TopicCheck)
+            title = entity["Title"]
+            abstract = entity["Abstract"] if entity["Abstract"] else ""
+            tldr = entity["TLDR"] if entity["TLDR"] else ""
+            messages = [
+                SystemMessage("""You are a strict assistant. Your role is to help determine if papers discuss the topic the user asks about. 
+                Only accept those that strictly mention the topic since a mistake will kill all your family. If in doubt is it better to determine a paper as not valid.
+                Return JSON with (if not mentioned, leave it as None):
+                - is_valid (bool). True if the paper data is about the topic requested
+                Example response for paper with abstract 'Kappa proposes a framework for simplified serverless development using checkpointing to handle timeouts and providing concurrency mechanisms for parallel' and topic 'serverless development':
+                {{
+                    "is_valid": true,
+                }}  
+                """),
+                HumanMessage(f"""Determine if the following paper content is about the topic: <topic>{topic}</topic>\n
+                Title: {title}\n
+                TLDR: {tldr}\n
+                Abstract: {abstract}\n
+                """)
+            ]
+            key = f"chain_{index}"
+            index += 1
+            chain = (
+                ChatPromptTemplate.from_messages(messages)
+                | model_with_structure
+            )
+            # print(chain)
+            map_chain_elements[key] = chain
+            # print(map_chain_elements)
+
+        # print(map_chain_elements)
+        map_chain = RunnableParallel(map_chain_elements)
+        response = map_chain.invoke({})
+        # print(response)
+        valid_papers = []
+        for index, paper in enumerate(nn_papers):
+            chain_i = f"chain_{index}"
+            if response[chain_i].is_valid:
+                valid_papers.append(paper)     
+                
+        return valid_papers   
     
     def __analyze_papers(self, papers):
         citations_analyzer = CitationAnalyzer(self.neo4j_client)
@@ -139,26 +369,6 @@ class RAG:
         
         cross_country_citations_test = citations_analyzer.test_country_bias_by_conference(df_cross_country_citations)                
         cross_conference_citations_test = citations_analyzer.test_conference_bias_by_conference(df_cross_conference_citations)
-        
-        # SYSTEM_PROMPT = """
-        # Human: You are an AI assistant specialized in reporting statistical findings without further wording or quesitons asked. Report as if the question was made by someone lacking statistics knowledge.
-        # """        
-        
-        # USER_PROMPT = f"""
-        # Use the following chi squared hypothesis test results to provide a summary of the findings done when checking citation patterns between conferences with the data enclosed in <context>. Provide interpretation over the data. Format the response in markdown.
-        # \n
-        # <context>
-        # {cross_conference_citations_test}
-        # </context>
-        # \n
-        # """
-        # response: ChatResponse = chat(
-        #     model=self.llm_name,
-        #     messages=[
-        #         {"role": "system", "content": SYSTEM_PROMPT},
-        #         {"role": "user", "content": USER_PROMPT},
-        #     ],
-        # )
                 
         
         analytics = {
@@ -172,40 +382,6 @@ class RAG:
         print("Finished analyzing")
         return analytics
         
-            # paper_context = f"""df_cross_country"]["KeyConcepts"]}
-            # #     TLDR: {paper["entity"]["TLDR"]}
-            # #     Abstract: {paper["entity"]["Abstract"]}
-            # # """      
-            # summarized_papers.append(paper_context)
-            # #     <context>
-            # #     {paper_context}
-            # #     </context>
-            # #     Provide an output in the form of:
-            # #     Title: <Provided paper title>
-            # #     Summary: <Elaborated summary>
-            # # """
-
-            # USER_PROMPT = f"""
-            #     Use the following pieces of information enclosed in <context> to extract relevant paper information and summarize it in less than 100 words.
-            #     <context>
-            #     {paper_context}
-            #     </context>
-            # """            
-                    
-            # response: ChatResponse = chat(
-            #     model=self.llm,
-            #     messages=[
-            #         {"role": "system", "content": SYSTEM_PROMPT},
-            #         {"role": "user", "content": USER_PROMPT},
-            #     ],
-            # )
-            # print(response["message"]["content"])
-            # summarized_papers.append(response["message"]["content"])                         
-        
-        # context = "\n".join(
-        #     [f"Paper:\n {paper}" for paper in summarized_papers]
-        # )
-        # return context
     def __get_paper_details(self, query: str, paper: dict) -> str:
         
         #  If not paper TLDR or Abstract, return title
@@ -220,28 +396,30 @@ class RAG:
             Abstract: {paper["entity"]["Abstract"]}
         """            
         
-        SYSTEM_PROMPT = """
-        Human: You are an AI assistant specialized in summarizing scientific papers. You only provide the summary of the topic without further wording.
-        """
+        # SYSTEM_PROMPT = """
+        # Human: You are an AI assistant specialized in summarizing scientific papers. You only provide the summary of the topic without further wording.
+        # """
         
-        USER_PROMPT = f"""
-        Use the following paper data to provide a summary of the topic of the paper data enclosed in <context>.
-        \n
-        <context>
-        {paper_context}
-        </context>
-        \n
-        Empashized information related to the following query: {query} 
-        """
-        print(paper_context)
-        response: ChatResponse = chat(
-            model=self.llm_name,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": USER_PROMPT},
-            ],
-        )     
-        return f"| {paper["entity"]["Title"]} | {paper["entity"]["Year"]} | {paper["entity"]["Conference"]} | {response["message"]["content"].replace('\n', '')} |"
+        # USER_PROMPT = f"""
+        # Use the following paper data to provide a summary of the topic of the paper data enclosed in <context>.
+        # \n
+        # <context>
+        # {paper_context}
+        # </context>
+        # \n
+        # Empashized information related to the following query: {query} 
+        # """
+        # print(paper_context)
+        # response: ChatResponse = chat(
+        #     model=self.llm_name,
+        #     messages=[
+        #         {"role": "system", "content": SYSTEM_PROMPT},
+        #         {"role": "user", "content": USER_PROMPT},
+        #     ],
+        # )     
+        # response = self.summarize_single_text(paper_context)
+        # return f"| {paper["entity"]["Title"]} | {paper["entity"]["Year"]} | {paper["entity"]["Conference"]} | {response["message"]["content"].replace('\n', '')} |"
+        return f"| {paper["entity"]["Title"]} | {paper["entity"]["Year"]} | {paper["entity"]["Conference"]} | {paper["entity"]["Summary"].replace('\n', '')} |"
         
     def __build_query_response(self, summary: str, details: List[str]) -> str:
         

@@ -25,7 +25,8 @@ def run_query(query: str):
     )
     
     neo4j_client = db.Neo4j("bolt://localhost:7687", "neo4j", "password", "middleware")
-    rag_client = RAG(milvus_client, neo4j_client, "gemma3:4b")    
+    # rag_client = RAG(milvus_client=milvus_client, neo4j_client=neo4j_client, llm="gemma3:4b")    
+    rag_client = RAG(milvus_client=milvus_client, neo4j_client=neo4j_client, llm="qwen3")    
         
     response, analytics = rag_client.query(query)
 

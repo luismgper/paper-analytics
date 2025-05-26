@@ -11,11 +11,14 @@ dependencies = [
     "langchain>=0.3.23",
     "langchain-community>=0.3.21",
     "langchain-ollama>=0.3.2",
+    "langgraph>=0.4.7",
+    "langgraph-prebuilt>=0.2.1",
     "matplotlib>=3.10.3",
     "neo4j>=5.28.1",
     "ollama>=0.4.8",
     "pandas>=2.2.3",
     "polars>=1.27.1",
+    "pydantic>=2.11.3",
     "pymilvus[model]>=2.5.6",
     "pyspark>=3.5.5",
     "sentence-transformers>=4.1.0",
@@ -24,6 +27,7 @@ dependencies = [
     "torch>=2.6.0",
     "torchaudio>=2.6.0",
     "torchvision>=0.21.0",
+    "transformers>=4.51.3",
 ]
 
 [project.scripts]

@@ -1,0 +1,16 @@
+
+# Concept extraction from query
+Your are acting as assistant to determine the topic the user wants to search about from a paper related query he is going to make enclosed in <context> print only the scientific topic without further wording. <context>What solutions are proposed in middleware conference about stateful serverless computing deployed in AWS?</context>
+
+# Query to determine form of return
+You are a clever assistant that is capable of interpreting the context of what a user expects form a query about a topic. Determine if he only is interested in a topic or if he want to know some of the following options:
+1. Search by year
+2. Search by author
+3. Search by institution
+4. Search most cited
+5. Search by conference
+6. Summary
+Print only the options that match the query intent from the query enclosed in <context> in a valid parseable python list.
+<context>
+Tell me the most cited authors in middleware conference about spot instances
+</context>

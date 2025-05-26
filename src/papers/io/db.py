@@ -46,7 +46,7 @@ class Milvus:
     def insert(self, data: list):
         self.milvus_client.insert(collection_name=self.collection_name, data=data)
         
-    def search(self, text: str, output_fields: List, limit: int=10, hybrid: bool=False, hybrid_fields: List=[]):
+    def search(self, text: str, output_fields: List, limit: int=10, hybrid: bool=False, hybrid_fields: List=[], expr: str=""):
         if hybrid:
             requests = []
             for field in hybrid_fields:
@@ -57,6 +57,7 @@ class Milvus:
                         "metric_type": "IP",
                         "params": {"nprobe": 10}
                     },
+                    "expr": expr,
                     "limit": limit,
                 }                   
                 requests.append(AnnSearchRequest(**search_param))
