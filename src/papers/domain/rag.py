@@ -65,11 +65,12 @@ class RAG:
         papers = [paper["entity"] for paper in context]
         
         print("Summarizing recovered papers....")
-        summary = self.summarize_multiple_texts(documents[:10])
-        
-        print("Analyzing papers")
+        # summary = self.summarize_multiple_texts(documents[:10])
+                
         paper_analytics = self.__analyze_papers(papers)
-               
+        print("Analyzing papers")
+        return self.__query_aggregation_agent(df=paper_analytics["processed_papers"], query=query)
+                       
         response = self.__build_query_response(summary, details)
         
         return response, paper_analytics     
@@ -500,5 +501,5 @@ class RAG:
             ]
         })
         
-        return response
+        return response["messages"][-1].content
 

@@ -1,9 +1,9 @@
-import polaras as pl
+import polars as pl
 
 
 class AgentTools:
     
-    def __init__(self, df_citations: pl.DAtaframe):
+    def __init__(self, df_citations: pl.DataFrame):
         self.df_citations = df_citations
     
     def get_most_cited_countries(self, text) -> str:

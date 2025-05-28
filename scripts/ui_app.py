@@ -28,10 +28,11 @@ def run_query(query: str):
     # rag_client = RAG(milvus_client=milvus_client, neo4j_client=neo4j_client, llm="gemma3:4b")    
     rag_client = RAG(milvus_client=milvus_client, neo4j_client=neo4j_client, llm="qwen3")    
         
-    response, analytics = rag_client.query(query)
+    # response, analytics = rag_client.query(query)
+    response = rag_client.query(query)
 
     report = f"Query: {query}\n\nResults:\n{response}"
-    return report, analytics
+    return report#, analytics
 
 
 def show_plot(df: pl.DataFrame):
@@ -50,23 +51,24 @@ def main():
 
     if st.button("Submit Query"):
         with st.spinner("Processing..."):
-            report, analytics = run_query(query)
+            # report, analytics = run_query(query)
+            report = run_query(query)
 
         st.subheader("Report:")
         # st.text_area("Results", report, height=300)
         st.markdown(report)
 
         st.subheader("Cited papers")
-        st.dataframe(analytics["processed_papers"], use_container_width=False)
+        # st.dataframe(analytics["processed_papers"], use_container_width=False)
         
-        st.subheader("Cross conference citations")
-        st.dataframe(analytics["cross_conference_citations"])
-        st.dataframe(analytics["cross_conference_citations_test"]["contingency_table"])
+        # st.subheader("Cross conference citations")
+        # st.dataframe(analytics["cross_conference_citations"])
+        # st.dataframe(analytics["cross_conference_citations_test"]["contingency_table"])
         
-        st.subheader("Cross conference citations")
-        st.dataframe(analytics["cross_country_citations"])        
-        st.dataframe(analytics["cross_country_citations_test"]["contingency_table"])
-        st.markdown(analytics["cross_conference_citations_response"]["message"]["content"])
+        # st.subheader("Cross conference citations")
+        # st.dataframe(analytics["cross_country_citations"])        
+        # st.dataframe(analytics["cross_country_citations_test"]["contingency_table"])
+        # st.markdown(analytics["cross_conference_citations_response"]["message"]["content"])
         # show_plot(df)
 
     st.markdown("---")
