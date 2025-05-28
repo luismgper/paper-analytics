@@ -1,4 +1,6 @@
 from src.papers.io.db import Milvus, Neo4j
+from src.papers.domain.agent_tools import AgentTools
+from src.papers.domain.citations_analyzer import CitationAnalyzer
 from ollama import chat, ChatResponse
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.docstore.document import Document
@@ -6,13 +8,20 @@ from langchain.chains.summarize import load_summarize_chain
 # from langchain_community.llms import Ollama
 # from langchain_ollama import OllamaLLM
 from typing import List, Optional
-from src.papers.domain.citations_analyzer import CitationAnalyzer
 import polars as pl
 from pydantic import BaseModel
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableParallel
 from langchain_core.prompts import ChatPromptTemplate
+from langgraph.prebuilt import create_react_agent
+from typing import Annotated
+from typing_extensions import TypedDict
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from pydantic import BaseModel
+from langgraph.prebuilt import ToolNode, tools_condition
+
 
 class FilterOptions(BaseModel):
     """
@@ -132,43 +141,43 @@ class RAG:
         print(len(nn_papers))
         nn_papers = self.__filter_paper_adjustment_to_topic(nn_papers=nn_papers, filter_conditions=filter_parameters)
         print(len(nn_papers))
-        return [paper["entity"] for paper in nn_papers]
+        # return [paper["entity"] for paper in nn_papers]
         
         ##### Temporary disabled
-        if 1 == 2: 
-            context_papers_summarization = []
-            splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
-            relevance_position = 0
-            for paper in nn_papers:
-                print(paper)
-                details = self.__get_paper_details(query, paper)
+        # if 1 == 2: 
+        context_papers_summarization = []
+        splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
+        relevance_position = 0
+        for paper in nn_papers:
+            print(paper)
+            details = self.__get_paper_details(query, paper)
+            
+            relevance_position += 1
+            paper_context = f"""
+            Title: {paper["entity"]["Title"]}
+            TLDR: {paper["entity"]["TLDR"]}
+            Abstract: {paper["entity"]["Abstract"]}
+            """                  
+            
+            chunks = splitter.split_text(paper_context)
+            documents = []            
+            for i, chunk in enumerate(chunks):
+                doc = Document(
+                    page_content=chunk,
+                    metadata={
+                        "paper_id": relevance_position,
+                        "chunk_index": i
+                    }
+                )
+                documents.append(doc)                
+            
+            context_papers_summarization.append({
+                "entity": paper["entity"],
+                "documents": documents,
+                "details": details,
+            })
                 
-                relevance_position += 1
-                paper_context = f"""
-                Title: {paper["entity"]["Title"]}
-                TLDR: {paper["entity"]["TLDR"]}
-                Abstract: {paper["entity"]["Abstract"]}
-                """                  
-                
-                chunks = splitter.split_text(paper_context)
-                documents = []            
-                for i, chunk in enumerate(chunks):
-                    doc = Document(
-                        page_content=chunk,
-                        metadata={
-                            "paper_id": relevance_position,
-                            "chunk_index": i
-                        }
-                    )
-                    documents.append(doc)                
-                
-                context_papers_summarization.append({
-                    "entity": paper["entity"],
-                    "documents": documents,
-                    "details": details,
-                })
-                
-            return context_papers_summarization
+        return context_papers_summarization
     
     def __get_query_filter_conditions(self, query: str) -> FilterParameters:
         messages = [
@@ -388,13 +397,13 @@ class RAG:
         if not paper["entity"]["TLDR"] and not paper["entity"]["Abstract"]:
             return paper["entity"]["Title"]
         
-        # Summarize the paper data, and format the output
-        paper_context = f"""
-            Title: {paper["entity"]["Title"]}
-            Key concepts: {paper["entity"]["KeyConcepts"]}
-            TLDR: {paper["entity"]["TLDR"]}
-            Abstract: {paper["entity"]["Abstract"]}
-        """            
+        # # Summarize the paper data, and format the output
+        # paper_context = f"""
+        #     Title: {paper["entity"]["Title"]}
+        #     Key concepts: {paper["entity"]["KeyConcepts"]}
+        #     TLDR: {paper["entity"]["TLDR"]}
+        #     Abstract: {paper["entity"]["Abstract"]}
+        # """            
         
         # SYSTEM_PROMPT = """
         # Human: You are an AI assistant specialized in summarizing scientific papers. You only provide the summary of the topic without further wording.
@@ -433,5 +442,63 @@ class RAG:
         return response
 
     
-    
+    def __query_aggregation_agent(self, df: pl.DataFrame, query: str) -> str:
+        class State(TypedDict):
+            messages: Annotated[list, add_messages]
+
+        agent_tools = AgentTools(df_citations=df)
+        tools = [agent_tools.get_most_cited_countries, agent_tools.get_publications_per_year]
+        
+        # Tell the LLM which tools it can call
+        llm_with_tools = self.model.bind_tools(tools)
+        def chatbot(state: State):
+            print(state)
+            return {"messages": [llm_with_tools.invoke(state["messages"])]}
+            
+        graph_builder = StateGraph(State)
+        graph_builder.add_node("chatbot", chatbot)
+        graph_builder.add_edge(START, "chatbot")
+        graph_builder.add_edge("chatbot", END)        
+        
+        tool_node = ToolNode(tools)
+        graph_builder.add_node("tools", tool_node)
+        graph_builder.add_edge("tools", "chatbot")
+
+        graph_builder.add_conditional_edges(
+            "chatbot",
+            tools_condition,
+        )
+
+        class State(TypedDict):
+            # Messages have the type "list". The `add_messages` function
+            # in the annotation defines how this state key should be updated
+            # (in this case, it appends messages to the list, rather than overwriting them)
+            messages: Annotated[list, add_messages]
+
+        graph = graph_builder.compile()
+        
+        SYSTEM_MESSAGE="""
+        You are an intelligent AI assisstant which is responsible of helping the user consult research paper data.
+        Your role is to use the provided tools to retrieve the needed information about papers and answer using it.
+        IMPORTANT: Never use the same tool twice for the same question. 
+        """
+        
+        USER_MESSAGE = f"""
+        Use the right tool to answer the question asked enclosed in <query>.
+        If further information is needed use the following tools {tools}
+        <query>
+        {query}
+        </query>
+        /no_think
+        """
+        
+        response = graph.invoke({
+            "messages": [
+                
+                {"role": "system", "content": SYSTEM_MESSAGE},
+                {"role": "user", "content": USER_MESSAGE},
+            ]
+        })
+        
+        return response
 
