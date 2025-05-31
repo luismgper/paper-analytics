@@ -5,17 +5,34 @@ class AgentTools:
     
     def __init__(self, df_citations: pl.DataFrame):
         self.df_citations = df_citations
+
+    def get_other_citation_requested(self, text: str) -> str:
+        """Method for when no other tool is able to provide data"""
+        print("other tool user")
+        with pl.Config(
+            tbl_formatting="MARKDOWN",
+            tbl_hide_column_data_types=True,
+            tbl_hide_dataframe_shape=True,
+        ):    
+            return f"No data found for question '{text}' \n only the following data is available:  \n" + str((self.df_citations).head(9999999))
+    
+    def get_most_cited_paperss(self, text) -> str:
+        """Get top cited papers from the dataframe"""
+        print("citations per country tool")
+
+        df = self.__get_dynamic_count_by_column(["cited_title", "cited_year"])
+        with pl.Config(
+            tbl_formatting="MARKDOWN",
+            tbl_hide_column_data_types=True,
+            tbl_hide_dataframe_shape=True,
+        ):    
+            return "Here are the most cited papers in markdown format:  \n" + str((df).head(10)) 
     
     def get_most_cited_countries(self, text) -> str:
         """Get top cited countries from the dataframe"""
-        print("tool 1")
-        df = (
-            self.df_citations.filter(pl.col("cited_country") != "UNKNOWN")
-            .group_by(["cited_country"])\
-            .agg(pl.count().alias("citation_count"))\
-            .sort("citation_count", descending=True)\
-            .limit(10)
-        )
+        print("citations per country tool")
+
+        df = self.__get_dynamic_count_by_column(["cited_country"])
         with pl.Config(
             tbl_formatting="MARKDOWN",
             tbl_hide_column_data_types=True,
@@ -25,5 +42,36 @@ class AgentTools:
         
     def get_publications_per_year(self, text) -> str:
         """Get publication count by year with optional filtering"""
-        print("tool 2")
-        return "Don't have enough data"
+        print("citations per year tool")
+
+        df = self.__get_dynamic_count_by_column(["cited_year"])
+        with pl.Config(
+            tbl_formatting="MARKDOWN",
+            tbl_hide_column_data_types=True,
+            tbl_hide_dataframe_shape=True,
+        ):    
+            return  "Here are the citations per year in markdown format:  \n" + str((df).head(10))
+        
+    def get_citations_per_institution(self, text) -> str:
+        """Get citations count per institution"""
+        print("citations per institution tool")
+
+        df = self.__get_dynamic_count_by_column(["cited_institution"])
+        with pl.Config(
+            tbl_formatting="MARKDOWN",
+            tbl_hide_column_data_types=True,
+            tbl_hide_dataframe_shape=True,
+        ):    
+            return  "Here are the citations per institution in markdown format:  \n" + str((df).head(10))
+    
+    def __get_dynamic_count_by_column(self, columns: list[str], descending: bool) -> pl.DataFrame:
+        """Reusable method to make count aggregations per indicated columns"""    
+        df = self.df_citations
+        for column in columns:
+            df = df.filter(pl.col(column) != "UNKNOWN")
+        
+        return (
+            df.group_by(columns)
+            .agg(pl.len().alian("citation_count"))
+            .sort("citation_count", descending=descending)
+        )
