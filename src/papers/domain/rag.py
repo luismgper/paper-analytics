@@ -21,7 +21,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel
 from langgraph.prebuilt import ToolNode, tools_condition
-
+import json
 
 class FilterOptions(BaseModel):
     """
@@ -50,10 +50,36 @@ class TopicCheck(BaseModel):
     # reason: str    
 
 class RAG:
+    
+    SUPPORTED_FIELDS = {
+        "year": {"type": "int", "milvus_field": "year", "neo4j_field": "year"},
+        "country": {"type": "str", "milvus_field": "country", "neo4j_field": "country"},
+        "authors": {"type": "list", "milvus_field": "authors", "neo4j_field": "authors"},
+        "venue": {"type": "str", "milvus_field": "venue", "neo4j_field": "venue"},
+        "keywords": {"type": "list", "milvus_field": "keywords", "neo4j_field": "keywords"},
+        "citation_count": {"type": "int", "milvus_field": "citation_count", "neo4j_field": "citationCount"},
+        "document_type": {"type": "str", "milvus_field": "doc_type", "neo4j_field": "documentType"}
+    }
+
+    COUNTRY_MAPPING = {
+        "USA": "US", "UNITED STATES": "US", "AMERICA": "US",
+        "DEUTSCHLAND": "DE", "GERMANY": "DE",
+        "CANADA": "CA", "FRANCE": "FR", "UK": "GB", 
+        "UNITED KINGDOM": "GB", "ENGLAND": "GB", "CHINA": "CN",
+        "JAPAN": "JP", "AUSTRALIA": "AU", "INDIA": "IN", "BRAZIL": "BR"
+    }
+
+    OPERATOR_KEYS_TO_SYMBOLS = {
+        "$gt": ">", 
+        "$gte": ">=", 
+        "$lt": "<", 
+        "$lte": "<=",
+    }    
+    
     def __init__(self, llm: str, milvus_client: Optional[Milvus] = None, neo4j_client: Optional[Neo4j] = None):
         self.milvus_client = milvus_client
         self.neo4j_client = neo4j_client
-        self.model = ChatOllama(model=llm, temperature=0.2, top_k=20, top_p=0.8)        
+        self.model = ChatOllama(model=llm, temperature=0)        
         self.llm_name = llm
         # self.light_model = ChatOllama(model="qwen3:0.6b", temperature=0)  
         
@@ -113,7 +139,11 @@ class RAG:
         
         print(f"Recovered filter parameters: {filter_parameters}")
         
-        expr = self.__build_expr_for_rag(filter_parameters=filter_parameters)
+        valid_filter_parameters = self.__validate_and_normalize_filters(filter_parameters.get("source_filters", {}))
+        
+        # expr = self.__build_expr_for_rag(filter_parameters=filter_parameters)
+        expr = self.__build_milvus_expr(valid_filter_parameters)
+        print(f"DB filter expr: {expr}")
         
         # An hybrid search will be done. The top papers for each kind of embedding will be retrieved.
         # Then a reranking will be done to retrieve the most similar ones taking into account every 
@@ -123,6 +153,9 @@ class RAG:
             output_fields=[
                 "Title",
                 "TLDR",
+                "Authors",
+                "Institutions",
+                "COuntries",
                 "Abstract",
                 "KeyConcepts",
                 "Year",
@@ -139,9 +172,11 @@ class RAG:
             ],
             expr=expr,
         )
-        print(len(nn_papers))
-        nn_papers = self.__filter_paper_adjustment_to_topic(nn_papers=nn_papers, filter_conditions=filter_parameters)
-        print(len(nn_papers))
+        print("Determining relevant papers for the topic")
+        topic = filter_parameters["topic"]
+        if topic and topic != "":
+            nn_papers = self.__filter_paper_adjustment_to_topic(nn_papers=nn_papers, topic=topic)
+        print(f"Total papers: {len(nn_papers)}")
         # return [paper["entity"] for paper in nn_papers]
         
         ##### Temporary disabled
@@ -150,7 +185,7 @@ class RAG:
         splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
         relevance_position = 0
         for paper in nn_papers:
-            print(paper)
+            # print(paper)
             details = self.__get_paper_details(query, paper)
             
             relevance_position += 1
@@ -180,8 +215,31 @@ class RAG:
                 
         return context_papers_summarization
     
-    def __get_query_filter_conditions(self, query: str) -> FilterParameters:
+    def __get_query_filter_conditions_old(self, query: str) -> FilterParameters:
         messages = [
+            # SystemMessage("""You are a helpful assistant that uses only the input the user provides. Your role is to help research paper data related to the topics the user asks about.
+            # Fields with list of FilterOptions type must be filled as follows:
+            # - value: The value of the field to be filled
+            # - equal: False if it is asked to be different from the value
+            # - citation: If the field value refers to paper citations
+            # Return JSON with (if not mentioned, leave it as None):
+            # - main_concept (string). Topic of research
+            # - years (list[FilterOptions]). Publish years
+            # - authors (list[FilterOptions]). List of paper authors
+            # - institutions (list[FilterOptions]). All must be valid institutions laike universities or corporations.
+            # - countries (list[FilterOptions]). All must be valid countries. I provided translate them to usual abbreviaions like US for United States of America or DE for Germany
+            # - conferences (list[FilterOptions]). List of valid conferences: IEEECloud, Middleware, SIGCOMM, eurosys
+            # Example response for 2024 papers about spot instances with 100+ citations published in middleware. Authors must be from Harvard University. Cited papers must not be from Canada:
+            # {{
+            #     "main_concept": "spot instances",
+            #     "authors": None,
+            #     "instituftions": [{{ "value": "Harvard University", "equal": True, cit"ation: False}}],
+            #     "countries": [{{"value": "CA", "equal": False, "citation": True}}],
+            #     "years": [{{"value": "2025", "equal": True, "citation": False}}],
+            #     "conferences": [{{"value": "Middleware", "equal": True, "citation": False}}],
+            # }}
+            # /think
+            # """),
             SystemMessage("""You are a helpful assistant that uses only the input the user provides. Your role is to help research paper data related to the topics the user asks about.
             Fields with list of FilterOptions type must be filled as follows:
             - value: The value of the field to be filled
@@ -192,23 +250,13 @@ class RAG:
             - years (list[FilterOptions]). Publish years
             - authors (list[FilterOptions]). List of paper authors
             - institutions (list[FilterOptions]). All must be valid institutions laike universities or corporations.
-            - countries (list[FilterOptions]). All must be valid countries. Translate them to usual abbreviaions like US for United Staes of America or DE for Germany
-            - conferences (list[FilterOptions]). List of valid conferences: IEEECloud, Middleware, SIGCOMM, eurosys
-            Example response for 2024 papers about spot instances with 100+ citations published in middleware. Authors must be from Harvard University. Cited papers must not be from Canada:
-            {{
-                "main_concept": "spot instances",
-                "authors": None,
-                "institutions": [{{ "value": "Harvard University", "equal": True, cit"ation: False}}],
-                "countries": [{{"value": "CA", "equal": False, "citation": True}}],
-                "years": [{{"value": "2025", "equal": True, "citation": False}}],
-                "conferences": [{{"value": "Middleware", "equal": True, "citation": False}}],
-            }}
-            /no_think
-            """),
+            - countries (list[FilterOptions]). All must be valid countries. I provided translate them to usual abbreviaions like US for United States of America or DE for Germany
+            - conferences (list[FilterOptions]). List of valid conferences: IEEECloud, Middleware, SIGCOMM, eurosys       
+            """),     
             HumanMessage(query),
         ]
         response = self.model.invoke(messages)
-        
+        print(response)
         messages_for_structure = [
             messages[0],
             HumanMessage(f""" Return JSON with (if not mentioned, leave it as None):
@@ -231,7 +279,220 @@ class RAG:
         # print(structured_response)
         
         return structured_response
-           
+    
+    def __get_query_filter_conditions(self, query: str) -> dict:       
+        messages = ChatPromptTemplate.from_template(
+            """Extract structured parameters from this query. Return ONLY JSON.
+            Available filters:
+            - year (list of years)
+            - country (use 2-letter abbreviations: US, DE, CA, etc.)
+            - institution (list of universities, companies or corporations)
+            - conference (list of conferences where the paper was published)
+            - author (list of authors who published papers)
+            - Aggregation: 'most cited' implies country aggregation
+
+            Operators: $eq, $ne, $in, $nin, $gt, $gte, $lt, $lte, $between
+
+            Output structure:
+            {{
+            "topic": "research topic of query"
+            "source_filters": {{
+                "field1": {{"$operator": value}},
+                "field2": {{"$operator": value}}
+            }},
+            "cited_filters": {{
+                "field3": {{"$operator": value}}
+            }},
+            "aggregation": {{
+                "type": "count", 
+                "group_by": "field",
+                "sort": "desc"
+            }}
+            }}
+            
+            Special handling:
+            - if $between operator first and last value are the same, use $eq instead
+
+            Important: Convert all country names to 2-letter abbreviations! If filters apply to citaitons add them to cited_filters else to source_filters
+            Example conversion:
+            "USA" -> "US"
+            "Germany" -> "DE"
+            "Canada" -> "CA"
+
+            Query: {query}
+            Output: 
+            /no_think"""
+        )
+        chain = messages | self.model
+        response = chain.invoke({"query": query})
+        print(response)
+        try:
+            filters = json.loads(response.content.partition('</think>\n\n')[2])
+            # Normalize country abbreviations in filters
+            # for filter_type in ["source_filters", "cited_filters"]:
+            #     if filter_type in filters and "country" in filters[filter_type]:
+            #         country_spec = filters[filter_type]["country"]
+                    # if "$ne" in country_spec:
+                    #     country_spec["$ne"] = normalize_country(country_spec["$ne"])
+                    # if "$in" in country_spec:
+                    #     country_spec["$in"] = [normalize_country(c) for c in country_spec["$in"]]
+            return filters
+        except json.JSONDecodeError:
+            return {"topic": "", "source_filters": {}, "cited_filters": {}, "aggregation": None}    
+    
+    def __normalize_field_value(self, field, value):
+        """Normalize values based on field type and special handling"""
+        # if field == "country":
+        #     value = value.upper().strip() if isinstance(value, str) else [item.upper().strip() for item in value]
+        #     return COUNTRY_MAPPING.get(value, value[:2].upper())
+        
+        if self.SUPPORTED_FIELDS[field]["type"] == "list" and not isinstance(value, list):
+            return [v.strip() for v in value.split(",")]
+        
+        return value
+
+    def __validate_and_normalize_filters(self, filters):
+        """Validate and normalize filter values"""
+        normalized = {"source_filters": {}, "cited_filters": {}}
+        
+        for filter_type in ["source_filters", "cited_filters"]:
+            if filter_type not in filters:
+                continue
+                
+            for field, conditions in filters[filter_type].items():
+                if field not in self.SUPPORTED_FIELDS:
+                    continue
+                
+                normalized_conds = {}
+                for op, value in conditions.items():
+                    # Handle special operators
+                    if op == "$between" and isinstance(value, list) and len(value) == 2:
+                        normalized_conds["$gte"] = value[0]
+                        normalized_conds["$lte"] = value[1]
+                    else:
+                        # Normalize single values
+                        if not isinstance(value, list) or op in ["$in", "$nin"]:
+                            value = self.__normalize_field_value(field, value)
+                        # Normalize list values
+                        elif isinstance(value, list):
+                            value = [self.__normalize_field_value(field, v) for v in value]
+                        
+                        normalized_conds[op] = value
+                
+                if normalized_conds:
+                    normalized[filter_type][field] = normalized_conds
+        
+        return normalized    
+    
+    def __build_milvus_expr(self, filters):
+        """Build Milvus boolean expression from filters"""
+        conditions = []
+        
+        print(filters)
+        for field, spec in filters.items():
+            if field not in self.SUPPORTED_FIELDS:
+                continue
+                
+            milvus_field = self.SUPPORTED_FIELDS[field]["milvus_field"]
+            field_type = self.SUPPORTED_FIELDS[field]["type"]
+            
+            for op, value in spec.items():
+                print(f"op: {op}, value: {value}")
+                # Handle different operators
+                if op == "$eq":
+                    if field_type == "str":
+                        conditions.append(f"{milvus_field} == '{value}'")
+                    else:
+                        conditions.append(f"{milvus_field} == {value}")
+                        
+                elif op == "$ne":
+                    if field_type == "str":
+                        conditions.append(f"{milvus_field} != '{value}'")
+                    else:
+                        conditions.append(f"{milvus_field} != {value}")
+                        
+                elif op == "$in":
+                    if field_type == "str":
+                        items = [f"'{v}'" for v in value]
+                    else:
+                        items = [str(v) for v in value]
+                    conditions.append(f"{milvus_field} in [{','.join(items)}]")
+                    
+                elif op == "$nin":
+                    if field_type == "str":
+                        items = [f"'{v}'" for v in value]
+                    else:
+                        items = [str(v) for v in value]
+                    conditions.append(f"not {milvus_field} in [{','.join(items)}]")
+                    
+                elif op in ["$gt", "$gte", "$lt", "$lte"]:
+                    operator_symbol = self.OPERATOR_KEYS_TO_SYMBOLS[op]
+                    conditions.append(f"{milvus_field} {operator_symbol} {value}")
+        
+        return " and ".join(conditions) if conditions else None    
+    
+    def __build_neo4j_conditions(self, filters, alias="cited"):
+        """Build WHERE conditions for Neo4j"""
+        conditions = []
+        params = {}
+        param_count = 0
+        
+        for field, spec in filters.items():
+            
+            print(f"field  {field}, spec {spec}")
+            if field not in self.SUPPORTED_FIELDS:
+                continue
+                
+            neo4j_field = self.SUPPORTED_FIELDS[field]["neo4j_field"]
+            field_type = self.SUPPORTED_FIELDS[field]["type"]
+            
+            for op, value in spec.items():
+                param_name = f"param{param_count}"
+                param_count += 1
+                
+                print(f"op {op}, value {value}")
+                
+                if op == "$eq":
+                    if field_type == "str":
+                        conditions.append(f"{alias}.{neo4j_field} = ${param_name}")
+                    else:
+                        conditions.append(f"{alias}.{neo4j_field} = ${param_name}")
+                    params[param_name] = value
+                    
+                elif op == "$ne":
+                    if field_type == "str":
+                        conditions.append(f"{alias}.{neo4j_field} <> ${param_name}")
+                    else:
+                        conditions.append(f"{alias}.{neo4j_field} <> ${param_name}")
+                    params[param_name] = value
+                    
+                elif op == "$in":
+                    conditions.append(f"{alias}.{neo4j_field} IN ${param_name}")
+                    params[param_name] = value
+                    
+                elif op == "$nin":
+                    conditions.append(f"NOT {alias}.{neo4j_field} IN ${param_name}")
+                    params[param_name] = value
+                    
+                elif op == "$gt":
+                    conditions.append(f"{alias}.{neo4j_field} > ${param_name}")
+                    params[param_name] = value
+                    
+                elif op == "$gte":
+                    conditions.append(f"{alias}.{neo4j_field} >= ${param_name}")
+                    params[param_name] = value
+                    
+                elif op == "$lt":
+                    conditions.append(f"{alias}.{neo4j_field} < ${param_name}")
+                    params[param_name] = value
+                    
+                elif op == "$lte":
+                    conditions.append(f"{alias}.{neo4j_field} <= ${param_name}")
+                    params[param_name] = value
+        
+        where_clause = " AND ".join(conditions)
+        return f"WHERE {where_clause}" if conditions else "", params    
+    
     def __build_expr_for_filter_field(self, filter_options: list[FilterOptions], field_name: str, json_field: bool = False) -> str:
         expr = ""
         in_expr = []
@@ -315,7 +576,7 @@ class RAG:
         print(expr)     
         return expr   
     
-    def __filter_paper_adjustment_to_topic(self, nn_papers: list[dict], filter_conditions: FilterParameters) -> list[dict]:
+    def __filter_paper_adjustment_to_topic(self, nn_papers: list[dict], topic: str) -> list[dict]:
         # model = ChatOllama(model="qwen3:0.6b", temperature=0)  
         valid_papers = []
         index = 0
@@ -323,7 +584,8 @@ class RAG:
         for paper in nn_papers:
             entity = paper["entity"]
             
-            topic = filter_conditions.main_concept
+            # print(filter_conditions)
+            # topic = filter_conditions["topic"]
             
             model_with_structure = self.model.with_structured_output(TopicCheck)
             title = entity["Title"]
@@ -365,6 +627,7 @@ class RAG:
             if response[chain_i].is_valid:
                 valid_papers.append(paper)     
                 
+        print(f"Number of valid papers retrieved: {len(valid_papers)}")
         return valid_papers   
     
     def __analyze_papers(self, papers):
@@ -448,12 +711,18 @@ class RAG:
             messages: Annotated[list, add_messages]
 
         agent_tools = AgentTools(df_citations=df)
-        tools = [agent_tools.get_most_cited_countries, agent_tools.get_publications_per_year]
+        tools = [
+            agent_tools.get_most_cited_countries, 
+            agent_tools.get_publications_per_year,
+            agent_tools.get_most_cited_papers,
+            agent_tools.get_citations_per_institution,
+            agent_tools.get_other_citation_requested,
+        ]
         
         # Tell the LLM which tools it can call
         llm_with_tools = self.model.bind_tools(tools)
         def chatbot(state: State):
-            print(state)
+            # print(state)
             return {"messages": [llm_with_tools.invoke(state["messages"])]}
             
         graph_builder = StateGraph(State)
@@ -486,7 +755,7 @@ class RAG:
         
         USER_MESSAGE = f"""
         Use the right tool to answer the question asked enclosed in <query>.
-        If further information is needed use the following tools {tools}
+        If further information is needed use the following tools {tools}. If not adecuate tool is found, use get_other_citation_requested.
         <query>
         {query}
         </query>

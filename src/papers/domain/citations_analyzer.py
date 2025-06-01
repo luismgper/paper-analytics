@@ -33,9 +33,10 @@ class CitationAnalyzer:
         MATCH (p:Paper {title: $title, year: $year})
         OPTIONAL MATCH (p)-[:CITES]->(cited:Paper)
         OPTIONAL MATCH (cited)-[:HAS_INSTITUTION]->(inst:Institution)-[:LOCATED_IN]->(country:Country)
-        RETURN p.title as paper_title, p.year as paper_year, p.PredominantCountry as predominant_country, cited.title AS cited_title, 
-        cited.PredominantCountry as cited_predominant_country, cited.conference AS cited_conference, 
-        country.name AS cited_country
+        RETURN p.title as paper_title, p.year as paper_year, p.PredominantCountry as predominant_country, p.Authors as authors,
+        p.conference as conference, 
+        cited.title AS cited_title, cited.PredominantCountry as cited_predominant_country, cited.conference AS cited_conference, 
+        cited.Authors as cited_authors, country.name AS cited_country, inst.name as cited_institution
         """
         result = self.graph_client.run_query(
             query=query,
@@ -52,6 +53,9 @@ class CitationAnalyzer:
             title = paper["Title"]
             year = paper["Year"]
             conference = paper["Conference"]
+            authors = paper["Authors"]
+            institutions = paper["Institutions"]
+            summary = paper["Summary"]
             
             db = conf_map.get(title)
             if not db:
@@ -65,6 +69,9 @@ class CitationAnalyzer:
                         "source_year": year,
                         "source_conference": conference,
                         "source_predominant_country": citation["predominant_country"],
+                        "source_authors": authors,
+                        "source_institutions": institutions,
+                        "source_summary": summary,
                         "cited_title": citation["cited_title"],
                         "cited_predominant_country": citation["cited_predominant_country"],
                         "cited_conference": citation["cited_conference"] or "UNKNOWN",
