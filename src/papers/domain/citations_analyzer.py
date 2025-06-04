@@ -56,6 +56,8 @@ class CitationAnalyzer:
             authors = paper["Authors"]
             institutions = paper["Institutions"]
             summary = paper["Summary"]
+            abstract = paper.get("Abstract", "")
+            tldr = paper.get("TLDR", "")
             
             db = conf_map.get(title)
             if not db:
@@ -72,6 +74,8 @@ class CitationAnalyzer:
                         "source_authors": authors,
                         "source_institutions": institutions,
                         "source_summary": summary,
+                        "source_tldr": tldr,
+                        "source_abstract": abstract,
                         "cited_title": citation["cited_title"],
                         "cited_predominant_country": citation["cited_predominant_country"],
                         "cited_conference": citation["cited_conference"] or "UNKNOWN",

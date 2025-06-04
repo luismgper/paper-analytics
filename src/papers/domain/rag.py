@@ -52,13 +52,11 @@ class TopicCheck(BaseModel):
 class RAG:
     
     SUPPORTED_FIELDS = {
-        "year": {"type": "int", "milvus_field": "year", "neo4j_field": "year"},
-        "country": {"type": "str", "milvus_field": "country", "neo4j_field": "country"},
-        "authors": {"type": "list", "milvus_field": "authors", "neo4j_field": "authors"},
-        "venue": {"type": "str", "milvus_field": "venue", "neo4j_field": "venue"},
-        "keywords": {"type": "list", "milvus_field": "keywords", "neo4j_field": "keywords"},
-        "citation_count": {"type": "int", "milvus_field": "citation_count", "neo4j_field": "citationCount"},
-        "document_type": {"type": "str", "milvus_field": "doc_type", "neo4j_field": "documentType"}
+        "year": {"type": "str", "milvus_field": "Year", "neo4j_field": "year"},
+        "country": {"type": "list", "milvus_field": "Countries", "neo4j_field": "country"},
+        "author": {"type": "list", "milvus_field": "Authors", "neo4j_field": "authors"},
+        "institution": {"type": "list", "milvus_field": "Institutions", "neo4j_field": "institutions"},
+        "conference": {"type": "str", "milvus_field": "Conference", "neo4j_field": "institutions"},
     }
 
     COUNTRY_MAPPING = {
@@ -79,7 +77,7 @@ class RAG:
     def __init__(self, llm: str, milvus_client: Optional[Milvus] = None, neo4j_client: Optional[Neo4j] = None):
         self.milvus_client = milvus_client
         self.neo4j_client = neo4j_client
-        self.model = ChatOllama(model=llm, temperature=0)        
+        self.model = ChatOllama(model=llm, temperature=0, top_k=20, top_p=0.8)        
         self.llm_name = llm
         # self.light_model = ChatOllama(model="qwen3:0.6b", temperature=0)  
         
@@ -97,9 +95,9 @@ class RAG:
         print("Analyzing papers")
         return self.__query_aggregation_agent(df=paper_analytics["processed_papers"], query=query)
                        
-        response = self.__build_query_response(summary, details)
+        # response = self.__build_query_response(summary, details)
         
-        return response, paper_analytics     
+        # return response, paper_analytics     
     
     def summarize_multiple_texts(self, docs: List) -> str:
         # splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
@@ -139,10 +137,10 @@ class RAG:
         
         print(f"Recovered filter parameters: {filter_parameters}")
         
-        valid_filter_parameters = self.__validate_and_normalize_filters(filter_parameters.get("source_filters", {}))
+        valid_filter_parameters = self.__validate_and_normalize_filters(filter_parameters)
         
-        # expr = self.__build_expr_for_rag(filter_parameters=filter_parameters)
-        expr = self.__build_milvus_expr(valid_filter_parameters)
+        # expr = self.__build_expr_for_rag(filter_parameters=filter_parameters.get("source_filters", {}))
+        expr = self.__build_milvus_expr(valid_filter_parameters.get("source_filters", {}))
         print(f"DB filter expr: {expr}")
         
         # An hybrid search will be done. The top papers for each kind of embedding will be retrieved.
@@ -155,7 +153,7 @@ class RAG:
                 "TLDR",
                 "Authors",
                 "Institutions",
-                "COuntries",
+                "Countries",
                 "Abstract",
                 "KeyConcepts",
                 "Year",
@@ -176,11 +174,10 @@ class RAG:
         topic = filter_parameters["topic"]
         if topic and topic != "":
             nn_papers = self.__filter_paper_adjustment_to_topic(nn_papers=nn_papers, topic=topic)
-        print(f"Total papers: {len(nn_papers)}")
-        # return [paper["entity"] for paper in nn_papers]
-        
-        ##### Temporary disabled
-        # if 1 == 2: 
+
+        for paper in nn_papers:
+            print(paper["entity"]["Title"])
+
         context_papers_summarization = []
         splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
         relevance_position = 0
@@ -354,7 +351,7 @@ class RAG:
     def __validate_and_normalize_filters(self, filters):
         """Validate and normalize filter values"""
         normalized = {"source_filters": {}, "cited_filters": {}}
-        
+
         for filter_type in ["source_filters", "cited_filters"]:
             if filter_type not in filters:
                 continue
@@ -388,7 +385,6 @@ class RAG:
         """Build Milvus boolean expression from filters"""
         conditions = []
         
-        print(filters)
         for field, spec in filters.items():
             if field not in self.SUPPORTED_FIELDS:
                 continue
@@ -397,18 +393,20 @@ class RAG:
             field_type = self.SUPPORTED_FIELDS[field]["type"]
             
             for op, value in spec.items():
-                print(f"op: {op}, value: {value}")
                 # Handle different operators
                 if op == "$eq":
                     if field_type == "str":
                         conditions.append(f"{milvus_field} == '{value}'")
                     else:
-                        conditions.append(f"{milvus_field} == {value}")
+                        print(value)
+                        conditions.append(f"json_contains_any({milvus_field}, {value})")
+                        # conditions.append(f"{milvus_field} == {value}")
                         
                 elif op == "$ne":
                     if field_type == "str":
                         conditions.append(f"{milvus_field} != '{value}'")
                     else:
+                        conditions.append(f"{milvus_field} != {value}")
                         conditions.append(f"{milvus_field} != {value}")
                         
                 elif op == "$in":
@@ -416,7 +414,7 @@ class RAG:
                         items = [f"'{v}'" for v in value]
                     else:
                         items = [str(v) for v in value]
-                    conditions.append(f"{milvus_field} in [{','.join(items)}]")
+                    conditions.append(f"{milvus_field} in [{','.join(f"'{items}'")}]")
                     
                 elif op == "$nin":
                     if field_type == "str":
@@ -577,7 +575,7 @@ class RAG:
         return expr   
     
     def __filter_paper_adjustment_to_topic(self, nn_papers: list[dict], topic: str) -> list[dict]:
-        # model = ChatOllama(model="qwen3:0.6b", temperature=0)  
+        model = ChatOllama(model="qwen3:0.6b", temperature=0)  
         valid_papers = []
         index = 0
         map_chain_elements = {}
@@ -587,7 +585,7 @@ class RAG:
             # print(filter_conditions)
             # topic = filter_conditions["topic"]
             
-            model_with_structure = self.model.with_structured_output(TopicCheck)
+            model_with_structure = model.with_structured_output(TopicCheck)
             title = entity["Title"]
             abstract = entity["Abstract"] if entity["Abstract"] else ""
             tldr = entity["TLDR"] if entity["TLDR"] else ""
@@ -605,6 +603,7 @@ class RAG:
                 Title: {title}\n
                 TLDR: {tldr}\n
                 Abstract: {abstract}\n
+                /no_think
                 """)
             ]
             key = f"chain_{index}"
@@ -758,17 +757,18 @@ class RAG:
         If further information is needed use the following tools {tools}. If not adecuate tool is found, use get_other_citation_requested.
         <query>
         {query}
-        </query>
+        </query>        
         /no_think
         """
         
         response = graph.invoke({
             "messages": [
-                
                 {"role": "system", "content": SYSTEM_MESSAGE},
                 {"role": "user", "content": USER_MESSAGE},
             ]
         })
         
-        return response["messages"][-1].content
+        # for message in response["messages"]:
+        #     print(message)
+        return response["messages"][-1].content.partition('</think>\n\n')[2]
 

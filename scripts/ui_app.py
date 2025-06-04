@@ -26,7 +26,8 @@ def run_query(query: str):
     
     neo4j_client = db.Neo4j("bolt://localhost:7687", "neo4j", "password", "middleware")
     # rag_client = RAG(milvus_client=milvus_client, neo4j_client=neo4j_client, llm="gemma3:4b")    
-    rag_client = RAG(milvus_client=milvus_client, neo4j_client=neo4j_client, llm="qwen3")    
+    rag_client = RAG(milvus_client=milvus_client, neo4j_client=neo4j_client, llm="qwen3:30b-a3b")    
+    # rag_client = RAG(milvus_client=milvus_client, neo4j_client=neo4j_client, llm="qwen3")    
         
     # response, analytics = rag_client.query(query)
     response = rag_client.query(query)
@@ -58,7 +59,7 @@ def main():
         # st.text_area("Results", report, height=300)
         st.markdown(report)
 
-        st.subheader("Cited papers")
+        # st.subheader("Cited papers")
         # st.dataframe(analytics["processed_papers"], use_container_width=False)
         
         # st.subheader("Cross conference citations")
