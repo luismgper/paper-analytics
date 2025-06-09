@@ -77,6 +77,7 @@ class Milvus:
                 data=[
                     self.emb_text(text)
                 ],  
+                fitler=expr,
                 limit=limit, 
                 anns_field="Abstract",
                 search_params={"metric_type": self.metric_type, "params": {}},  # Inner product distance
