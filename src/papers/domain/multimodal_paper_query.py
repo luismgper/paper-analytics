@@ -18,6 +18,18 @@ class ComparisonOperator(str, Enum):
     ge = "ge"
     ne = "ne"
     
+class AggregationOperations(str, Enum):
+    count = "count"
+    mean = "mean"
+    
+class SortOptions(BaseModel):
+    field: str
+    descending: True    
+    
+class OutputParameters(BaseModel):
+    fields: list[str]
+    distinct: Optional[bool] = False
+        
 class FilterCondition(BaseModel):
     level: int = 0
     connector: LogicConnector = LogicConnector.none
@@ -33,10 +45,17 @@ class CitationFilters(BaseModel):
     text: Optional[str]
     filters: Optional[list[FilterCondition]]
     
+class AggregationParameters(BaseModel):
+    group_by: Optional[list[str]] = []
+    aggregations: Optional[list[AggregationOperations]] = None
+    sort: Optional[list[SortOptions]] = None    
+    limit: int = 10       
+    
 class QueryParameters(BaseModel):
     source_filters: Optional[SourceFilters] = None
     citation_filters: Optional[CitationFilters] = None
-    aggregations: Optional[dict] = None
+    aggregations: Optional[AggregationParameters] = None
+    output: Optional[OutputParameters] = None
     
 class CitationParameters(BaseModel):
     title: str
@@ -107,15 +126,23 @@ class MultiModalPaperQuery():
         # If citations are provided, make query with its filters
         df_target = self.__get_data_from_citations(query.target_filters) if query.citation_filters.filters else []
             
-        return df_source, df_target
-            
-        # Merge results
-        # df_merged = 
+        # Merge results. If source and citations provided at the same time, an AND operation is done so that
+        # only common conditions are filtered
+        df_merged = self.__merge_source_and_target(df_source, df_target) 
+        
+        # If no aggregations required, return current merged dataframe
+        if not query.aggregations: 
+            return df_merged
         
         # Apply aggregations over results
+        df_aggregated = self.__query_aggregations(df_merged, query.aggregations)
         
+        # Provide output
+        output = query.output
+        if output.distinct:
+            return df_aggregated.columns(output.columns).unique() 
         
-              
+        return df_aggregated.columns(output.columns)      
         
     def query_vector_db(self, text: str, expr: str = "", top_k: int = 10, search_fields: list = VECTOR_DB["SEARCH_FIELDS"]) -> pl.DataFrame:
         """Retrieve data from vector database
@@ -214,6 +241,15 @@ class MultiModalPaperQuery():
         df_exploded = pl.DataFrame(results).unnest("match")
         return df_exploded         
     
+    def __merge_source_and_target(df_source: pl.DataFrame, df_citation: pl.DataFrame) -> pl.DataFrame:
+        if len(df_source) == 0:
+            return df_citation
+        
+        if len(df_citation):
+            return df_source
+        
+        return df_source.join(df_citation, on=["source_title", "source_year", "citation_title", "citation_year"])
+    
     def __get_citations_data_from_source(self, df_source: pl.DataFrame) -> pl.DataFrame:
         
         # UDF to use
@@ -286,8 +322,7 @@ class MultiModalPaperQuery():
             
             # Papers found, cet citing papers
             df_target_with_citers = self.__get_citing_data_from_target(df_papers)
-    
-    
+        
     def __translate_vector_db_filters(self, filter: SourceFilters) -> str:
         
         expr = ""
@@ -316,5 +351,53 @@ class MultiModalPaperQuery():
     def __translate_graph_db_filters(self, ) -> str:
         pass
     
-    def __translate_realtional_db_filters(self, ) -> str:
+    def __translate_relational_db_filters(self, ) -> str:
         pass
+    
+    
+    # class CitationParameters(BaseModel):
+    # group_by: Optional[list[str]] = []
+    # aggregation: Optional[AggregationOperations] = None
+    # descending: Optional[bool] = True    
+    # limit: int = 10
+    def __query_aggregations(self, df: pl.DataFrame, parameters: AggregationParameters) -> pl.DataFrame:
+        
+        if not parameters:
+            return df
+        
+        aggregations = parameters.aggregations
+        sorting = parameters.sort
+        limit = parameters.limit
+        
+        # If aggregations provided, aggregate fields
+        df_agg = df
+        if aggregations:
+            for aggregation in aggregations:
+                expr = []
+                if aggregation == AggregationOperations.count:
+                    expr.append(pl.len().alias("count"))
+                elif aggregation == AggregationOperations.mean:
+                    expr.append(pl.mean().alias("mean")) 
+            df_agg = df_agg.group_by(parameters.group_by).agg(expr)
+        
+        # If sorting provided, make sort
+        df_sort = df_agg
+        if parameters.sort:
+            sort_columns = []
+            descending = []
+            for s in sorting:
+                sort_columns.append(s.field)
+                descending.append(s.descending)
+                
+            descending = [sort.descending for sort in sorting]
+            
+            df_sort = (
+                df_sort.group_by(parameters.group_by)
+                    .agg(expr)
+                    .sort(sort_columns, descending=descending)
+            )
+        
+        if limit:           
+            return df_sort.limit(limit)
+        
+        return df_sort 
