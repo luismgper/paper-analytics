@@ -112,6 +112,21 @@ class MultiModalPaperQuery():
             ComparisonOperator.ge: ">=",
         }
     }
+    
+    RELATIONAL_DB =  {
+        "CONFERENCE_MAPPING": {
+            "ccgrid": "data/RelationalDB/ccgrid.db",
+            "cloud": "data/RelationalDB/cloud.db",
+            "europar": "data/RelationalDB/europar.db",
+            "eurosys": "data/RelationalDB/eurosys.db",
+            "ic2e": "data/RelationalDB/ic2e.db",
+            "icdcs": "data/RelationalDB/icdcs.db",
+            "IEEEcloud": "data/RelationalDB/IEEEcloud.db",
+            "middleware": "data/RelationalDB/middleware.db",
+            "nsdi": "data/RelationalDB/nsdi.db",
+            "sigcomm": "data/RelationalDB/sigcomm.db",
+        }
+    }
             
     def __init__(self, relational_db_client: db.SQLite, vector_db_client: db.Milvus, graph_db_client: db.Neo4j):
         self.relational_db_client = relational_db_client
@@ -124,7 +139,7 @@ class MultiModalPaperQuery():
         df_source = self.__get_data_from_source(query.source_filters) if query.source_filters else []
 
         # If citations are provided, make query with its filters
-        df_target = self.__get_data_from_citations(query.target_filters) if query.citation_filters.filters else []
+        df_target = self.__get_data_from_citations(query.target_filters) if query.citation_filters.filters else []    
             
         # Merge results. If source and citations provided at the same time, an AND operation is done so that
         # only common conditions are filtered
@@ -300,6 +315,44 @@ class MultiModalPaperQuery():
             expr=expr,
             # top_k=100
         )
+        
+        conferences = df_source_papers.select("Conference").unique().to_dicts()
+        commitees_per_conference = []
+        for conference in conferences:
+            relational_db = self.RELATIONAL_DB["CONFERENCE_MAPPING"][conference]
+            client = self.relational_db_client(relational_db)
+            client.connect()
+            committees = client.query("""
+                SELECT c_inst.year, comm.name, inst.name, inst.country
+                FROM Committee_Institution AS c_inst 
+                INNER JOIN Committee as comm
+                ON comm.id_committee = c_inst.id_committee
+                INNER JOIN Institutions as inst
+                ON inst.id_institution = c_inst.id_institution
+                """)
+            client.close()
+            
+            for committee in committees:
+                commitees_per_conference.append({
+                    "Conference": conference,
+                    "Year": committee[0],
+                    "Committee": {
+                        "committee_name": committee[1],
+                        "committee_institution": committee[2],
+                        "committee_country": committee[3],
+                    }
+                })
+                
+        df_committees_per_conference = pl.DataFrame(commitees_per_conference)\
+            .group_by("Year", "Conference")\
+            .agg([pl.col("Committee")])
+            
+        df_source_papers = df_source_papers.join(
+            df_committees_per_conference, 
+            on=["Conference", "Year"],
+            how="left"
+        )
+            
         
         if len(df_source_papers) > 0:
             

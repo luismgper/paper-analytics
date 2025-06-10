@@ -225,8 +225,15 @@ class SQLite:
             self.conn = None
             self.cursor = None
 
-    def execute(self, query: str, params: Tuple = ()) -> None:
+    def execute(self, query: str, params: Tuple = ()) -> callable:
         if not self.cursor:
             raise RuntimeError("Database not connected.")
-        self.cursor.execute(query, params)
+        result = self.cursor.execute(query, params)
         self.conn.commit()
+        return result
+    
+    def query(self, query: str, params: Tuple = ()) -> list[dict]:
+        self.connect()
+        result = self.execute(query=query, params=params)
+        return result.fetchall()
+        
