@@ -24,7 +24,7 @@ class AggregationOperations(str, Enum):
     
 class SortOptions(BaseModel):
     field: str
-    descending: True    
+    descending: Optional[bool] = True    
     
 class OutputParameters(BaseModel):
     fields: list[str]
@@ -38,8 +38,8 @@ class FilterCondition(BaseModel):
     values: list[str]    
     
 class SourceFilters(BaseModel):
-    text: Optional[str]
-    filters: Optional[list[FilterCondition]]
+    text: Optional[str] = None
+    filters: Optional[list[FilterCondition]] = []
     
 class CitationFilters(BaseModel):
     text: Optional[str]
@@ -134,12 +134,13 @@ class MultiModalPaperQuery():
         self.graph_db_client = graph_db_client
     
     def query(self, query: QueryParameters) -> pl.DataFrame:
+        print(query)
         
         # If source is provided, start by recovering source paper data.
         df_source = self.__get_data_from_source(query.source_filters) if query.source_filters else []
 
         # If citations are provided, make query with its filters
-        df_target = self.__get_data_from_citations(query.target_filters) if query.citation_filters.filters else []    
+        df_target = self.__get_data_from_citations(query.target_filters) if query.citation_filters else []    
             
         # Merge results. If source and citations provided at the same time, an AND operation is done so that
         # only common conditions are filtered
@@ -256,11 +257,11 @@ class MultiModalPaperQuery():
         df_exploded = pl.DataFrame(results).unnest("match")
         return df_exploded         
     
-    def __merge_source_and_target(df_source: pl.DataFrame, df_citation: pl.DataFrame) -> pl.DataFrame:
+    def __merge_source_and_target(self, df_source: pl.DataFrame, df_citation: pl.DataFrame) -> pl.DataFrame:
         if len(df_source) == 0:
             return df_citation
         
-        if len(df_citation):
+        if len(df_citation) == 0:
             return df_source
         
         return df_source.join(df_citation, on=["source_title", "source_year", "citation_title", "citation_year"])
@@ -308,8 +309,8 @@ class MultiModalPaperQuery():
         return df_papers_with_citations         
     
     def __get_data_from_source(self, filters: SourceFilters) -> pl.DataFrame:
-        
-        expr = self.__translate_vector_db_filters(filters)
+                
+        expr = self.__translate_vector_db_filters(filters) if filters.filters else ""
         df_source_papers = self.query_vector_db(
             text=filters.text,
             expr=expr,
@@ -319,7 +320,7 @@ class MultiModalPaperQuery():
         conferences = df_source_papers.select("Conference").unique().to_dicts()
         commitees_per_conference = []
         for conference in conferences:
-            relational_db = self.RELATIONAL_DB["CONFERENCE_MAPPING"][conference]
+            relational_db = self.RELATIONAL_DB["CONFERENCE_MAPPING"][conference["Conference"]]
             client = self.relational_db_client(relational_db)
             client.connect()
             committees = client.query("""
@@ -334,7 +335,7 @@ class MultiModalPaperQuery():
             
             for committee in committees:
                 commitees_per_conference.append({
-                    "Conference": conference,
+                    "Conference": conference["Conference"],
                     "Year": committee[0],
                     "Committee": {
                         "committee_name": committee[1],
@@ -344,6 +345,9 @@ class MultiModalPaperQuery():
                 })
                 
         df_committees_per_conference = pl.DataFrame(commitees_per_conference)\
+            .with_columns(
+                pl.col("Year").cast(pl.String).alias("Year")
+            )\
             .group_by("Year", "Conference")\
             .agg([pl.col("Committee")])
             
