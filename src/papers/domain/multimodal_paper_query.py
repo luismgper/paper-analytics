@@ -6,11 +6,17 @@ from enum import Enum
 import polars as pl
 
 class LogicConnector(str, Enum):
+    """
+    Logic connector to join two filter conditions
+    """
     none = ""
     and_op = "and"
     or_op = "or"
 
 class ComparisonOperator(str, Enum):
+    """
+    Valid comparison operators to be used in filtering
+    """
     eq = "eq"
     lt = "lt"
     gt = "gt"
@@ -18,48 +24,120 @@ class ComparisonOperator(str, Enum):
     ge = "ge"
     ne = "ne"
     
+class ParenthesisIndicator(str, Enum):
+    """
+    Indicates opening or closing of a nested condition
+    """
+    # none = ""
+    open = "("
+    close = ")" 
+    
+class FilterFields(str, Enum):
+    """
+    Fields to use as filtering
+    """
+    title="Title"
+    year="Year"
+    authors="Authors"
+    institutions="Institutions"
+    countries="Countries"
+    committees="Committees"
+    
+class OutputFields(str, Enum):
+    """
+    Fields to be used as output to display results
+    """
+    source_title="Title"
+    source_year="Year"
+    source_authors="Authors"
+    source_institutions="Institutions"
+    source_countries="Countries"
+    source_committees="Committees"
+    citation_title="Title"
+    citation_year="Year"
+    citation_authors="Authors"
+    citation_institutions="Institutions"
+    citation_countries="Countries"
+    citation_committees="Committees"     
+    
 class AggregationOperations(str, Enum):
+    """
+    Possible aggregation operations
+    """
     count = "count"
     mean = "mean"
     
 class SortOptions(BaseModel):
-    field: str
-    descending: Optional[bool] = True    
+    """
+    Possible sorting options in output
+    """
+    field: str = Field(description="Field to sort")
+    descending: Optional[bool] = Field(default=True, description="Indicates descending ordering")   
     
 class OutputParameters(BaseModel):
-    fields: list[str]
-    distinct: Optional[bool] = False
-        
+    """
+    Output options to display results of the query
+    """
+    fields: list[OutputFields] = Field(default="Fields to return in output results")
+    distinct: Optional[bool] = Field(default=False, description="Indicates if returning duplicate entries should be avoided")
+            
 class FilterCondition(BaseModel):
-    level: int = 0
-    connector: LogicConnector = LogicConnector.none
-    field: str
-    operator: ComparisonOperator
-    values: list[str]    
+    """
+    Provides individual fitlering condition for queries
+    """
+    parenthesis : Optional[ParenthesisIndicator] = Field(
+        default="", 
+        description="""Indicates if the opening or closing of a parenthesis grouping of conditions is needed. 
+        If open is indication, the condition is the first of the grouped statement. 
+        If close, it is the last of an already open statement""")
+    connector: Optional[LogicConnector] = Field(
+        default=LogicConnector.none, 
+        description="Indicates if logical connector is applied before the condition")
+    field: FilterFields = Field(
+        description="Field of the filter condition")
+    operator: ComparisonOperator = Field(
+        description="Comparison operator of the filtering condition")
+    values: list[str] = Field(
+        default="List of values to use in the filter condition")
     
 class SourceFilters(BaseModel):
-    text: Optional[str] = None
-    filters: Optional[list[FilterCondition]] = []
+    """
+    Provides filtering criteria over source papers (papers that cite)
+    """
+    text: Optional[str] = Field(description="Topic regarding paper content of the query being made")
+    filters: Optional[list[FilterCondition]] = Field(default=[], description="Filtering conditions about the papers")
     
 class CitationFilters(BaseModel):
-    text: Optional[str]
-    filters: Optional[list[FilterCondition]]
-    
+    """
+    Provides filtering criteria over papers being cited
+    """    
+    text: Optional[str] = Field(description="Topic regarding cited paper of the query being made")
+    filters: Optional[list[FilterCondition]] = Field(default=[], description="Filtering conditions about the papers")
+
 class AggregationParameters(BaseModel):
-    group_by: Optional[list[str]] = []
-    aggregations: Optional[list[AggregationOperations]] = None
-    sort: Optional[list[SortOptions]] = None    
-    limit: int = 10       
+    """
+    Parameters to provide aggregations over retrieved data
+    """
+    group_by: Optional[list[OutputFields]] = Field(default=[], description="Fields to do grouping with")
+    aggregations: Optional[list[AggregationOperations]] = Field(default=None, description="Aggregation operations requested")
+    sort: Optional[list[SortOptions]] = Field(default=None, description="Sorting fields")    
+    limit: int = Field(default=10, description="Number of recrods expected to return")
     
 class QueryParameters(BaseModel):
-    source_filters: Optional[SourceFilters] = None
-    citation_filters: Optional[CitationFilters] = None
-    aggregations: Optional[AggregationParameters] = None
-    output: Optional[OutputParameters] = None
+    """
+    Paper query options
+    """
+    source_filters: Optional[SourceFilters] = Field(default=None, description="Filter options over source papers")
+    citation_filters: Optional[CitationFilters] = Field(default=None, description="Filter options over papers cited")
+    aggregations: Optional[AggregationParameters] = Field(default=None, description="Aggregations to be made over results")
+    output: Optional[OutputParameters] = Field(default=None, description="Options over returned results")
     
 class CitationParameters(BaseModel):
-    title: str
-    year: str
+    """
+    Parameters to be used to filter graph DB
+    """
+    title: str = Field(description="Paper title")
+    year: str = Field(description="Paper pubblishing year")
     
 class MultiModalPaperQuery():
     """
