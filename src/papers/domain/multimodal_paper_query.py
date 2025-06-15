@@ -28,7 +28,7 @@ class ParenthesisIndicator(str, Enum):
     """
     Indicates opening or closing of a nested condition
     """
-    # none = ""
+    none = ""
     open = "("
     close = ")" 
     
@@ -181,6 +181,10 @@ class MultiModalPaperQuery():
             "Institutions",
             "Countries",
         ],
+        "LIST_FIELDS_EXPR_MAPPING": {
+            ComparisonOperator.eq: "json_contains_any",
+            ComparisonOperator.ne: "not json_contains_any",  
+        },
         "EXPR_MAPPING": {
             ComparisonOperator.eq: "in",
             ComparisonOperator.lt: "<",
@@ -192,26 +196,55 @@ class MultiModalPaperQuery():
     }
     
     RELATIONAL_DB =  {
+        # "CONFERENCE_MAPPING": {
+        #     "ccgrid": "data/RelationalDB/ccgrid.db",
+        #     "cloud": "data/RelationalDB/cloud.db",
+        #     "europar": "data/RelationalDB/europar.db",
+        #     "eurosys": "data/RelationalDB/eurosys.db",
+        #     "ic2e": "data/RelationalDB/ic2e.db",
+        #     "icdcs": "data/RelationalDB/icdcs.db",
+        #     "IEEEcloud": "data/RelationalDB/IEEEcloud.db",
+        #     "middleware": "data/RelationalDB/middleware.db",
+        #     "nsdi": "data/RelationalDB/nsdi.db",
+        #     "sigcomm": "data/RelationalDB/sigcomm.db",
+        # }
         "CONFERENCE_MAPPING": {
-            "ccgrid": "data/RelationalDB/ccgrid.db",
-            "cloud": "data/RelationalDB/cloud.db",
-            "europar": "data/RelationalDB/europar.db",
-            "eurosys": "data/RelationalDB/eurosys.db",
-            "ic2e": "data/RelationalDB/ic2e.db",
-            "icdcs": "data/RelationalDB/icdcs.db",
-            "IEEEcloud": "data/RelationalDB/IEEEcloud.db",
-            "middleware": "data/RelationalDB/middleware.db",
-            "nsdi": "data/RelationalDB/nsdi.db",
-            "sigcomm": "data/RelationalDB/sigcomm.db",
-        }
+            "ccgrid": "../data/RelationalDB/ccgrid.db",
+            "cloud": "../data/RelationalDB/cloud.db",
+            "europar": "../data/RelationalDB/europar.db",
+            "eurosys": "../data/RelationalDB/eurosys.db",
+            "ic2e": "../data/RelationalDB/ic2e.db",
+            "icdcs": "../data/RelationalDB/icdcs.db",
+            "IEEEcloud": "../data/RelationalDB/IEEEcloud.db",
+            "middleware": "../data/RelationalDB/middleware.db",
+            "nsdi": "../data/RelationalDB/nsdi.db",
+            "sigcomm": "../data/RelationalDB/sigcomm.db",
+        }        
     }
             
     def __init__(self, relational_db_client: db.SQLite, vector_db_client: db.Milvus, graph_db_client: db.Neo4j):
+        """
+        Constructor method
+
+        Args:
+            relational_db_client (db.SQLite): Relational DB client to use
+            vector_db_client (db.Milvus): Vector DB client to use
+            graph_db_client (db.Neo4j): Graph DB client to use
+        """
         self.relational_db_client = relational_db_client
         self.vector_db_client = vector_db_client
         self.graph_db_client = graph_db_client
     
     def query(self, query: QueryParameters) -> pl.DataFrame:
+        """
+        General query method for papers and their citations
+
+        Args:
+            query (QueryParameters): Paper query parameters
+
+        Returns:
+            pl.DataFrame: Results of the query in polars dataframe format
+        """
         print(query)
         
         # If source is provided, start by recovering source paper data.
@@ -222,7 +255,8 @@ class MultiModalPaperQuery():
             
         # Merge results. If source and citations provided at the same time, an AND operation is done so that
         # only common conditions are filtered
-        df_merged = self.__merge_source_and_target(df_source, df_target) 
+        apply_and = True if query.source_filters and query.citation_filters else False
+        df_merged = self.__merge_source_and_target(df_source, df_target, apply_and) 
         
         # If no aggregations required, return current merged dataframe
         if not query.aggregations: 
@@ -245,6 +279,7 @@ class MultiModalPaperQuery():
             text (str): text for similarity search
             expr (str, optional): expression to filter metadata. Defaults to "".
             top_k (int, optional): number of entries to retrieve. Defaults to 10.
+            search_fields(list, optional): fields to use in search
 
         Returns:
             pl.DataFrame: Results in polars dataframe format
@@ -333,13 +368,57 @@ class MultiModalPaperQuery():
                 results.append({ "database": database, "match": match })
         
         df_exploded = pl.DataFrame(results).unnest("match")
-        return df_exploded         
+        return df_exploded       
     
-    def __merge_source_and_target(self, df_source: pl.DataFrame, df_citation: pl.DataFrame) -> pl.DataFrame:
-        if len(df_source) == 0:
+    def translate_vector_db_filters(self, filter: SourceFilters) -> str:
+        """
+        Translate given parameters into vector db string filter condition
+
+        Args:
+            filter (SourceFilters): FIlters to apply
+
+        Returns:
+            str: FIltering condition in string format
+        """
+        
+        expr = ""
+        for filter in filter.filters:
+            # Translate filter condition to string
+            expr_condition = self.__translate_vector_db_filter_condition(filter)
+            
+            # Concatenation of conditions depending on connector
+            if filter.connector == LogicConnector.none:
+                expr = expr_condition
+            else:
+                expr += f" {filter.connector.value} {expr_condition}"
+                
+            # If a parenthesis opening or closing is specified, add the corresponding parenthesis
+            if filter.parenthesis == ParenthesisIndicator.open:
+                expr = "( "+expr
+            elif filter.parenthesis == ParenthesisIndicator.close:
+                expr += " )"
+                
+        return expr      
+    
+    def __merge_source_and_target(self, df_source: pl.DataFrame, df_citation: pl.DataFrame, apply_join: Optional[bool] = False) -> pl.DataFrame:
+        """
+        Joins source and citations filters into a single dataframe. 
+        If only one of them is provided, it is returning as the result.
+        If both are indicated, they are joined returning only papers appearing in both dataframes 
+
+        Args:
+            df_source (pl.DataFrame): Source papers dataframe
+            df_citation (pl.DataFrame): Cited papers dataframe
+            apply_and (bool, optional): Indicator to force apply of joining, even if a dataframe is empty 
+
+        Returns:
+            pl.DataFrame: _description_
+        """
+        
+        if len(df_source) == 0 and not apply_join:
             return df_citation
         
-        if len(df_citation) == 0:
+        if len(df_citation) == 0 and not apply_join:
             return df_source
         
         return df_source.join(df_citation, on=["source_title", "source_year", "citation_title", "citation_year"])
@@ -366,7 +445,15 @@ class MultiModalPaperQuery():
         return df_papers_with_citations 
     
     def __get_citing_data_from_target(self, df_target: pl.DataFrame) -> pl.DataFrame:
-        
+        """
+        Obtains papers citing the recovered cited papers
+
+        Args:
+            df_target (pl.DataFrame): DAtaframe of cited papers
+
+        Returns:
+            pl.DataFrame: Citations and their source citers
+        """
         # UDF to use
         def get_citations_call(x): 
             print(x)
@@ -387,8 +474,18 @@ class MultiModalPaperQuery():
         return df_papers_with_citations         
     
     def __get_data_from_source(self, filters: SourceFilters) -> pl.DataFrame:
-                
-        expr = self.__translate_vector_db_filters(filters) if filters.filters else ""
+        """
+        Method to retrieve data form source papers
+
+        Args:
+            filters (SourceFilters): Filterin criteria to apply
+
+        Returns:
+            pl.DataFrame: DataFrame with query results
+        """
+        
+        
+        expr = self.translate_vector_db_filters(filters) if filters.filters else ""
         df_source_papers = self.query_vector_db(
             text=filters.text,
             expr=expr,
@@ -445,7 +542,16 @@ class MultiModalPaperQuery():
         return []
     
     def __get_data_from_citations(self, filters: CitationFilters) -> pl.DataFrame:
-        expr = self.__translate_vector_db_filters(filters.filters)
+        """
+        Gets cited papers data from provided filters
+
+        Args:
+            filters (CitationFilters): Filter conditions for cited papers
+
+        Returns:
+            pl.DataFrame: Polars dataframe with results
+        """
+        expr = self.translate_vector_db_filters(filters.filters)
         df_papers = self.query_vector_db(
             text=filters.text,
             expr=expr,
@@ -457,46 +563,46 @@ class MultiModalPaperQuery():
             
             # Papers found, cet citing papers
             df_target_with_citers = self.__get_citing_data_from_target(df_papers)
+            return df_target_with_citers
         
-    def __translate_vector_db_filters(self, filter: SourceFilters) -> str:
-        
-        expr = ""
-        for filter in filter.filters:
-            # Translate filter condition to string
-            expr_condition = self.__translate_vector_db_filter_condition(filter)
-            
-            # Concatenation o conditions depending on connector
-            if filter.connector == LogicConnector.none:
-                expr = expr_condition
-            else:
-                expr += f" {filter.condition} {expr_condition}"
-                
-        return expr
+        return []
     
-    def __translate_vector_db_filter_condition( self, filter: FilterCondition):
+    def __translate_vector_db_filter_condition( self, filter: FilterCondition) -> str:
+        """
+        Generates vector database string condition for a single filter condition over a metadata field
+
+        Args:
+            filter (FilterCondition): FIeld filtering condition
+
+        Raises:
+            TypeError: Exception when no valid values are provided for the condition
+
+        Returns:
+            str: String condition for fitlring vector databse
+        """
+        
         if filter.field in self.VECTOR_DB["LIST_FIELDS"]:
-            pass
+            op = self.VECTOR_DB["LIST_FIELDS_EXPR_MAPPING"][filter.operator]
+            values_str = f"[{", ".join(f'"{value}"' for value in filter.values)}]"
+            return f"{op}({filter.field.value}, {values_str})"
         else:
             if filter.operator in [ComparisonOperator.ge, ComparisonOperator.le, ComparisonOperator.gt, ComparisonOperator.lt] and len(filter.values) != 1:
                 raise TypeError(f"Only a single item is allowed as values for inequality operator in field {filter.field}")
             
             op = self.VECTOR_DB["EXPR_MAPPING"][filter.operator]
-            return f"{filter.field} {op} {filter.values}"
-    
-    def __translate_graph_db_filters(self, ) -> str:
-        pass
-    
-    def __translate_relational_db_filters(self, ) -> str:
-        pass
-    
-    
-    # class CitationParameters(BaseModel):
-    # group_by: Optional[list[str]] = []
-    # aggregation: Optional[AggregationOperations] = None
-    # descending: Optional[bool] = True    
-    # limit: int = 10
+            return f"{filter.field.value} {op} {filter.values}"
+
     def __query_aggregations(self, df: pl.DataFrame, parameters: AggregationParameters) -> pl.DataFrame:
-        
+        """
+        Applies aggregations over provided data
+
+        Args:
+            df (pl.DataFrame): Paper data
+            parameters (AggregationParameters): Provided aggregaiton parameters
+
+        Returns:
+            pl.DataFrame: Resulting aggregated data
+        """
         if not parameters:
             return df
         
