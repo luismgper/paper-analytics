@@ -194,7 +194,7 @@ def main():
                 #         st.session_state.source_filters.pop(i)
                 #         st.rerun()
                 with col1:
-                    level = st.number_input("Level", min_value=0, value=0, key=f"source_level_{i}")
+                    parenthesis = st.selectbox("Parenthesis", ["", "(", ")"], key=f"source_parenthesis_{i}")
                 with col2:
                     connector = st.selectbox("Connector", ["", "and", "or"], key=f"source_connector_{i}")
                 with col3:
@@ -211,7 +211,7 @@ def main():
                 
                 if field and operator and values:
                     source_filter_conditions.append(FilterCondition(
-                        level=level,
+                        parenthesis=parenthesis,
                         connector=LogicConnector(connector),
                         field=field,
                         operator=ComparisonOperator(operator),
@@ -257,24 +257,24 @@ def main():
                 col1, col2, col3, col4, col5, col6 = st.columns(6)
                 
                 with col1:
-                    level = st.number_input("Level", min_value=0, value=0, key=f"source_level_{i}")
+                    parenthesis = st.selectbox("Parenthesis", ["", "(", ")"], key=f"citation_parenthesis_{i}")
                 with col2:
-                    connector = st.selectbox("Connector", ["", "and", "or"], key=f"source_connector_{i}")
+                    connector = st.selectbox("Connector", ["", "and", "or"], key=f"citation_connector_{i}")
                 with col3:
-                    field = st.text_input("Field", key=f"source_field_{i}")
+                    field = st.text_input("Field", key=f"citation_field_{i}")
                 with col4:
-                    operator = st.selectbox("Operator", ["eq", "lt", "gt", "le", "ge", "ne"], key=f"source_operator_{i}")
+                    operator = st.selectbox("Operator", ["eq", "lt", "gt", "le", "ge", "ne"], key=f"citation_operator_{i}")
                 with col5:
-                    values_input = st.text_input("Values (comma-separated)", key=f"source_values_{i}")
+                    values_input = st.text_input("Values (comma-separated)", key=f"citation_values_{i}")
                     values = [v.strip() for v in values_input.split(",") if v.strip()]
                 with col6:
-                    if st.button("Remove", key=f"remove_source_{i}"):
-                        st.session_state.source_filters.pop(i)
+                    if st.button("Remove", key=f"citation_{i}"):
+                        st.session_state.citation_filters.pop(i)
                         st.rerun()                   
                 
                 if field and operator and values:
                     citation_filter_conditions.append(FilterCondition(
-                        level=level,
+                        parenthesis=parenthesis,
                         connector=LogicConnector(connector),
                         field=field,
                         operator=ComparisonOperator(operator),
