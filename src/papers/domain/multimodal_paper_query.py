@@ -485,7 +485,7 @@ class MultiModalPaperQuery():
         """
         
         
-        expr = self.translate_vector_db_filters(filters) if filters.filters else ""
+        expr = ("NOT IsCitation AND " + self.translate_vector_db_filters(filters)) if filters.filters else "NOT IsCitation"
         df_source_papers = self.query_vector_db(
             text=filters.text,
             expr=expr,
@@ -551,7 +551,7 @@ class MultiModalPaperQuery():
         Returns:
             pl.DataFrame: Polars dataframe with results
         """
-        expr = self.translate_vector_db_filters(filters.filters)
+        expr = ("IsCitation AND " + self.translate_vector_db_filters(filters)) if filters.filters else "IsCitation"
         df_papers = self.query_vector_db(
             text=filters.text,
             expr=expr,
