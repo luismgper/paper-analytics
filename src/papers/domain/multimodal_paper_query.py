@@ -137,7 +137,7 @@ class CitationParameters(BaseModel):
     Parameters to be used to filter graph DB
     """
     title: str = Field(description="Paper title")
-    year: str = Field(description="Paper pubblishing year")
+    year: Optional[str] = Field(default=None, description="Paper pubblishing year")
     
 class MultiModalPaperQuery():
     """
@@ -196,30 +196,30 @@ class MultiModalPaperQuery():
     }
     
     RELATIONAL_DB =  {
-        # "CONFERENCE_MAPPING": {
-        #     "ccgrid": "data/RelationalDB/ccgrid.db",
-        #     "cloud": "data/RelationalDB/cloud.db",
-        #     "europar": "data/RelationalDB/europar.db",
-        #     "eurosys": "data/RelationalDB/eurosys.db",
-        #     "ic2e": "data/RelationalDB/ic2e.db",
-        #     "icdcs": "data/RelationalDB/icdcs.db",
-        #     "IEEEcloud": "data/RelationalDB/IEEEcloud.db",
-        #     "middleware": "data/RelationalDB/middleware.db",
-        #     "nsdi": "data/RelationalDB/nsdi.db",
-        #     "sigcomm": "data/RelationalDB/sigcomm.db",
-        # }
         "CONFERENCE_MAPPING": {
-            "ccgrid": "../data/RelationalDB/ccgrid.db",
-            "cloud": "../data/RelationalDB/cloud.db",
-            "europar": "../data/RelationalDB/europar.db",
-            "eurosys": "../data/RelationalDB/eurosys.db",
-            "ic2e": "../data/RelationalDB/ic2e.db",
-            "icdcs": "../data/RelationalDB/icdcs.db",
-            "IEEEcloud": "../data/RelationalDB/IEEEcloud.db",
-            "middleware": "../data/RelationalDB/middleware.db",
-            "nsdi": "../data/RelationalDB/nsdi.db",
-            "sigcomm": "../data/RelationalDB/sigcomm.db",
-        }        
+            "ccgrid": "data/RelationalDB/ccgrid.db",
+            "cloud": "data/RelationalDB/cloud.db",
+            "europar": "data/RelationalDB/europar.db",
+            "eurosys": "data/RelationalDB/eurosys.db",
+            "ic2e": "data/RelationalDB/ic2e.db",
+            "icdcs": "data/RelationalDB/icdcs.db",
+            "IEEEcloud": "data/RelationalDB/IEEEcloud.db",
+            "middleware": "data/RelationalDB/middleware.db",
+            "nsdi": "data/RelationalDB/nsdi.db",
+            "sigcomm": "data/RelationalDB/sigcomm.db",
+        }
+        # "CONFERENCE_MAPPING": {
+        #     "ccgrid": "../data/RelationalDB/ccgrid.db",
+        #     "cloud": "../data/RelationalDB/cloud.db",
+        #     "europar": "../data/RelationalDB/europar.db",
+        #     "eurosys": "../data/RelationalDB/eurosys.db",
+        #     "ic2e": "../data/RelationalDB/ic2e.db",
+        #     "icdcs": "../data/RelationalDB/icdcs.db",
+        #     "IEEEcloud": "../data/RelationalDB/IEEEcloud.db",
+        #     "middleware": "../data/RelationalDB/middleware.db",
+        #     "nsdi": "../data/RelationalDB/nsdi.db",
+        #     "sigcomm": "../data/RelationalDB/sigcomm.db",
+        # }        
     }
             
     def __init__(self, relational_db_client: db.SQLite, vector_db_client: db.Milvus, graph_db_client: db.Neo4j):
@@ -251,7 +251,7 @@ class MultiModalPaperQuery():
         df_source = self.__get_data_from_source(query.source_filters) if query.source_filters else []
 
         # If citations are provided, make query with its filters
-        df_target = self.__get_data_from_citations(query.target_filters) if query.citation_filters else []    
+        df_target = self.__get_data_from_citations(query.citation_filters) if query.citation_filters else []    
             
         # Merge results. If source and citations provided at the same time, an AND operation is done so that
         # only common conditions are filtered
@@ -329,8 +329,10 @@ class MultiModalPaperQuery():
             pl.DataFrame: DataFrame with query results
         """
         
+        filter_condition = "{title: $title, year: $year}" if parameters.year else "{title: $title}"
+        
         # Cypher query to search cited papers from source paper
-        QUERY = """MATCH (cited:Paper {title: $title, year: $year})
+        QUERY = f"""MATCH (cited:Paper {filter_condition})
         OPTIONAL MATCH (p:Paper)-[:CITES]->(cited)
         OPTIONAL MATCH (cited)-[:HAS_INSTITUTION]->(inst:Institution)-[:LOCATED_IN]->(country:Country)
         OPTIONAL MATCH (p)-[:HAS_INSTITUTION]->(p_inst:Institution)-[:LOCATED_IN]->(p_country:Country)
@@ -421,13 +423,17 @@ class MultiModalPaperQuery():
         if len(df_citation) == 0 and not apply_join:
             return df_source
         
+        print(df_source.columns)
+        # df_test = df_source.with_columns(pl.col("citers").list.to_struct().alias("citers")).unnest('citers')
+        # df_test = df_source.explode('citers').unnest('citers')
+        print(df_citation.columns)
         return df_source.join(df_citation, on=["source_title", "source_year", "citation_title", "citation_year"])
     
     def __get_citations_data_from_source(self, df_source: pl.DataFrame) -> pl.DataFrame:
         
         # UDF to use
         def get_citations_call(x): 
-            print(x)
+            # print(x)
             return self.get_citations(
                 CitationParameters(
                     **{"title": x["Title"], "year": x["Year"]}
@@ -439,8 +445,8 @@ class MultiModalPaperQuery():
                 pl.all(),
                 pl.struct("Title", "Year").alias("citers"),
             ).with_columns(
-                pl.col("citers").map_elements(get_citations_call).alias("citers")
-            )   
+                pl.col("citers").map_elements(get_citations_call).alias("citations")
+            ).explode("citations").unnest("citations")
         )
         return df_papers_with_citations 
     
@@ -456,10 +462,14 @@ class MultiModalPaperQuery():
         """
         # UDF to use
         def get_citations_call(x): 
-            print(x)
+            # print(x)
+            parameters = {"title": x["Title"]}
+            if x["Year"]:
+                parameters["year"] = x["Year"]
+                 
             return self.get_citers(
                 CitationParameters(
-                    **{"title": x["Title"], "year": x["Year"]}
+                    **parameters
                 )
             ).to_dicts()
                 
@@ -468,9 +478,10 @@ class MultiModalPaperQuery():
                 pl.all(),
                 pl.struct("Title", "Year").alias("citations"),
             ).with_columns(
-                pl.col("citations").map_elements(get_citations_call).alias("citations")
-            )   
+                pl.col("citations").map_elements(get_citations_call).alias("source")
+            ).explode('source').unnest('source')   
         )
+        print(df_papers_with_citations.columns)
         return df_papers_with_citations         
     
     def __get_data_from_source(self, filters: SourceFilters) -> pl.DataFrame:
@@ -485,7 +496,7 @@ class MultiModalPaperQuery():
         """
         
         
-        expr = ("NOT IsCitation AND " + self.translate_vector_db_filters(filters)) if filters.filters else "NOT IsCitation"
+        expr = ("IsCitation == False AND (" + self.translate_vector_db_filters(filters) + ")") if filters.filters else "IsCitation == False"
         df_source_papers = self.query_vector_db(
             text=filters.text,
             expr=expr,
@@ -551,7 +562,7 @@ class MultiModalPaperQuery():
         Returns:
             pl.DataFrame: Polars dataframe with results
         """
-        expr = ("IsCitation AND " + self.translate_vector_db_filters(filters)) if filters.filters else "IsCitation"
+        expr = ("IsCitation == True AND (" + self.translate_vector_db_filters(filters) + ")") if filters.filters else "IsCitation == True"
         df_papers = self.query_vector_db(
             text=filters.text,
             expr=expr,

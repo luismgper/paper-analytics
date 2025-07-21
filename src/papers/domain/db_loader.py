@@ -51,7 +51,7 @@ def get_extended_crawler_data_df(extended_crawler_data_path: Path, selected_cols
             
     # Merge all dataframes in a single one and filter only tha papers including an abstract
     df_final = (
-        pl.concat(flattened_dfs, how="vertical").filter(pl.col("Abstract").is_not_null() | pl.col("TLDR").is_not_null())#.limit(10)
+        pl.concat(flattened_dfs, how="vertical").filter(pl.col("Abstract").is_not_null() | pl.col("TLDR").is_not_null()).limit(1000)
         .with_columns(
             pl.lit(False).alias("IsCitation")
         )
@@ -103,7 +103,7 @@ def get_paper_citations_df(citations_crawler_data_path: Path) -> pl.DataFrame:
             pl.lit("").alias("TLDR"),
             pl.lit(True).alias("IsCitation")
         )
-        .select(['Abstract', 'Authors and Institutions', 'TLDR', 'Title', 'Conference', 'Year', 'IsCitation'])
+        .select(['Abstract', 'Authors and Institutions', 'TLDR', 'Title', 'Conference', 'Year', 'IsCitation']).limit(1000)
     )
             
     return df_final

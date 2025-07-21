@@ -44,7 +44,7 @@ def start():
         {"field_name": "id", "datatype": DataType.INT64, "is_primary": True},
         {"field_name": "Abstract", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False, "nullable": True},
         {"field_name": "AbstractVector", "datatype": DataType.FLOAT_VECTOR,"is_primary": False},
-        {"field_name": "AuthorsAndInstitutions", "datatype": DataType.JSON, "is_primary": False, "nullable": True},
+        {"field_name": "AuthorsAndInstitutions", "datatype": DataType.JSON,"max_length": 655350, "is_primary": False, "nullable": True},
         {"field_name": "Authors", "datatype": DataType.JSON, "is_primary": False, "nullable": True},
         {"field_name": "Institutions", "datatype": DataType.JSON, "is_primary": False, "nullable": True},
         {"field_name": "Countries", "datatype": DataType.JSON, "is_primary": False, "nullable": True},
@@ -57,7 +57,7 @@ def start():
         {"field_name": "Year", "datatype": DataType.VARCHAR, "max_length": 4, "is_primary": False, "nullable": True},
         {"field_name": "KeyConcepts", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False, "nullable": True},
         {"field_name": "KeyConceptsVector", "datatype": DataType.FLOAT_VECTOR, "is_primary": False, "nullable": True},
-        {"field_name": "Conference", "datatype": DataType.VARCHAR, "max_length": 100, "is_primary": False},
+        {"field_name": "Conference", "datatype": DataType.VARCHAR, "max_length": 10000, "is_primary": False},
         {"field_name": "Summary", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False},
         {"field_name": "IsCitation", "datatype": DataType.BOOL, "is_primary": False},
     ]
@@ -72,7 +72,6 @@ def start():
 
     df_abstracts_with_keywords = get_key_concepts(df_abstracts)
     df_to_insert = pl.concat([df_abstracts_with_keywords, df_citations.with_columns(pl.lit("").alias("KeyConcepts"))], how="vertical")
-    print(df_to_insert.head(100))
     
     print("Initializing vector database...")
 
