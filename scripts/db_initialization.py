@@ -57,8 +57,8 @@ def start():
         {"field_name": "Year", "datatype": DataType.VARCHAR, "max_length": 4, "is_primary": False, "nullable": True},
         {"field_name": "KeyConcepts", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False, "nullable": True},
         {"field_name": "KeyConceptsVector", "datatype": DataType.FLOAT_VECTOR, "is_primary": False, "nullable": True},
-        {"field_name": "Conference", "datatype": DataType.VARCHAR, "max_length": 10000, "is_primary": False},
-        {"field_name": "Summary", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False},
+        {"field_name": "Conference", "datatype": DataType.VARCHAR, "max_length": 10000, "is_primary": False, "nullable": True},
+        {"field_name": "Summary", "datatype": DataType.VARCHAR, "max_length": 65535, "is_primary": False, "nullable": True},
         {"field_name": "IsCitation", "datatype": DataType.BOOL, "is_primary": False},
     ]
 

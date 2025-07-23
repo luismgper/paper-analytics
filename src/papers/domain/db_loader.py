@@ -7,6 +7,7 @@ from keybert import KeyBERT
 from src.papers.io.db import Milvus, Neo4j
 from src.papers.utils.models import Models
 from src.papers.domain.rag import RAG
+import json
 
 def get_extended_crawler_data_df(extended_crawler_data_path: Path, selected_cols: List) -> pl.DataFrame:
     """
@@ -51,7 +52,7 @@ def get_extended_crawler_data_df(extended_crawler_data_path: Path, selected_cols
             
     # Merge all dataframes in a single one and filter only tha papers including an abstract
     df_final = (
-        pl.concat(flattened_dfs, how="vertical").filter(pl.col("Abstract").is_not_null() | pl.col("TLDR").is_not_null()).limit(1000)
+        pl.concat(flattened_dfs, how="vertical").filter(pl.col("Abstract").is_not_null() | pl.col("TLDR").is_not_null())#.limit(100)
         .with_columns(
             pl.lit(False).alias("IsCitation")
         )
@@ -78,7 +79,6 @@ def get_paper_citations_df(citations_crawler_data_path: Path) -> pl.DataFrame:
     # For each file generate a polars dataframe formatted
     for file in json_files:
         # Extract conference name from filename 
-
         # Read the file
         df_json = pl.read_json(file, infer_schema_length=100000)
         for paper in df_json.columns:
@@ -103,7 +103,7 @@ def get_paper_citations_df(citations_crawler_data_path: Path) -> pl.DataFrame:
             pl.lit("").alias("TLDR"),
             pl.lit(True).alias("IsCitation")
         )
-        .select(['Abstract', 'Authors and Institutions', 'TLDR', 'Title', 'Conference', 'Year', 'IsCitation']).limit(1000)
+        .select(['Abstract', 'Authors and Institutions', 'TLDR', 'Title', 'Conference', 'Year', 'IsCitation'])#.limit(1000)
     )
             
     return df_final
@@ -128,10 +128,10 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
         response = rag.summarize_single_text(text)
         print(f"Summary: {response["message"]["content"]}")
         return response["message"]["content"]
-    
+    data = []
     for i, row in enumerate(tqdm(papers, desc="Creating embeddings")):
         
-        data = []
+        # data = []
         title = row["Title"] if row["Title"] else None
         abstract = row["Abstract"] if row["Abstract"] else None
         key_concepts = row["KeyConcepts"] if row["KeyConcepts"] else None
@@ -139,8 +139,15 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
         authors = []
         institutions = []
         countries = []
-        if row["Authors and Institutions"]:
-            for author in row["Authors and Institutions"]:
+        authors_and_institutions = row["Authors and Institutions"]
+        if authors_and_institutions:
+            
+            # Skip if maximum length allowed for field is exceeded
+            is_too_long = check_json_field_length_exceeded(authors_and_institutions)
+            if is_too_long:
+                continue
+            
+            for author in authors_and_institutions:
                 authors.append(author["Author"])
                 if author["Institutions"]:
                     for institution in author["Institutions"]:
@@ -148,6 +155,7 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
                         countries.append(institution["Country"])
         
         empty_embedding = milvus_client.emb_text("")
+        is_to_be_summarized = tldr and tldr != "" and abstract and abstract != ""
         data.append({
             # "S2_Paper_ID": row["S2 Paper ID"], 
             "Title": title,
@@ -157,18 +165,42 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
             "TLDR": tldr,
             "TLDRVector": milvus_client.emb_text(row["TLDR"]) if row["TLDR"] else empty_embedding,
             "Year": row["Year"],
-            "AuthorsAndInstitutions": row["Authors and Institutions"],
+            "AuthorsAndInstitutions": authors_and_institutions,
             "Authors": authors,
             "Institutions": institutions,
             "Countries": countries,
             "KeyConcepts": key_concepts,
             "KeyConceptsVector": milvus_client.emb_text(row["KeyConcepts"]) if row["KeyConcepts"] else empty_embedding,
             "Conference": row["Conference"],
-            "Summary": summarize(f"Title: {title}. TLDR: {tldr}. Abstract: {abstract}. Key concepts: {key_concepts}") if tldr != "" and abstract != "" else title,     
+            "Summary": summarize(f"Title: {title}. TLDR: {tldr}. Abstract: {abstract}. Key concepts: {key_concepts}") if is_to_be_summarized else title,     
             "IsCitation": row["IsCitation"]   
-        })         
+        })  
+        
+        # print(data)
+        MAXIMUM_ENTRIES_PER_INSERT = 10
+        if len(data) == MAXIMUM_ENTRIES_PER_INSERT:
+            milvus_client.insert(data=data)
+            data = []
+    
+    if len(data) > 0:
         milvus_client.insert(data=data)
+    
     print("Finished inserting")        
+    
+def check_json_field_length_exceeded(data: dict, max_length : int=65535) -> bool:
+    """
+    Check if JSON field exceeds maximum string length
+
+    Args:
+        data (dict): object to evaluate
+        max_length (int, optional): MAx length to check if it is exceeded. Defaults to 65535.
+
+    Returns:
+        bool: True if exceeded, False otherwise
+    """
+    json_string = json.dumps(data, separators=(',', ':'))  # Compact JSON
+    current_length = len(json_string)
+    return (current_length > max_length)    
         
 def get_key_concepts(df_abstracts: pl.DataFrame) -> pl.DataFrame:
     """

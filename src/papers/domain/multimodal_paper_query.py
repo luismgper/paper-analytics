@@ -196,30 +196,30 @@ class MultiModalPaperQuery():
     }
     
     RELATIONAL_DB =  {
-        "CONFERENCE_MAPPING": {
-            "ccgrid": "data/RelationalDB/ccgrid.db",
-            "cloud": "data/RelationalDB/cloud.db",
-            "europar": "data/RelationalDB/europar.db",
-            "eurosys": "data/RelationalDB/eurosys.db",
-            "ic2e": "data/RelationalDB/ic2e.db",
-            "icdcs": "data/RelationalDB/icdcs.db",
-            "IEEEcloud": "data/RelationalDB/IEEEcloud.db",
-            "middleware": "data/RelationalDB/middleware.db",
-            "nsdi": "data/RelationalDB/nsdi.db",
-            "sigcomm": "data/RelationalDB/sigcomm.db",
-        }
         # "CONFERENCE_MAPPING": {
-        #     "ccgrid": "../data/RelationalDB/ccgrid.db",
-        #     "cloud": "../data/RelationalDB/cloud.db",
-        #     "europar": "../data/RelationalDB/europar.db",
-        #     "eurosys": "../data/RelationalDB/eurosys.db",
-        #     "ic2e": "../data/RelationalDB/ic2e.db",
-        #     "icdcs": "../data/RelationalDB/icdcs.db",
-        #     "IEEEcloud": "../data/RelationalDB/IEEEcloud.db",
-        #     "middleware": "../data/RelationalDB/middleware.db",
-        #     "nsdi": "../data/RelationalDB/nsdi.db",
-        #     "sigcomm": "../data/RelationalDB/sigcomm.db",
-        # }        
+        #     "ccgrid": "data/RelationalDB/ccgrid.db",
+        #     "cloud": "data/RelationalDB/cloud.db",
+        #     "europar": "data/RelationalDB/europar.db",
+        #     "eurosys": "data/RelationalDB/eurosys.db",
+        #     "ic2e": "data/RelationalDB/ic2e.db",
+        #     "icdcs": "data/RelationalDB/icdcs.db",
+        #     "IEEEcloud": "data/RelationalDB/IEEEcloud.db",
+        #     "middleware": "data/RelationalDB/middleware.db",
+        #     "nsdi": "data/RelationalDB/nsdi.db",
+        #     "sigcomm": "data/RelationalDB/sigcomm.db",
+        # }
+        "CONFERENCE_MAPPING": {
+            "ccgrid": "../data/RelationalDB/ccgrid.db",
+            "cloud": "../data/RelationalDB/cloud.db",
+            "europar": "../data/RelationalDB/europar.db",
+            "eurosys": "../data/RelationalDB/eurosys.db",
+            "ic2e": "../data/RelationalDB/ic2e.db",
+            "icdcs": "../data/RelationalDB/icdcs.db",
+            "IEEEcloud": "../data/RelationalDB/IEEEcloud.db",
+            "middleware": "../data/RelationalDB/middleware.db",
+            "nsdi": "../data/RelationalDB/nsdi.db",
+            "sigcomm": "../data/RelationalDB/sigcomm.db",
+        }        
     }
             
     def __init__(self, relational_db_client: db.SQLite, vector_db_client: db.Milvus, graph_db_client: db.Neo4j):
@@ -272,6 +272,18 @@ class MultiModalPaperQuery():
         
         return df_aggregated.columns(output.columns)      
         
+    def query_source(self, filters: SourceFilters) -> pl.DataFrame:
+        if not filters:
+            return []
+        
+        return self.__get_data_from_source(filters)
+    
+    def query_citation(self, filters: CitationFilters) -> pl.DataFrame:
+        if not filters:
+            return []
+        
+        return self.__get_data_from_citations(filters)    
+        
     def query_vector_db(self, text: str, expr: str = "", top_k: int = 10, search_fields: list = VECTOR_DB["SEARCH_FIELDS"]) -> pl.DataFrame:
         """Retrieve data from vector database
 
@@ -312,10 +324,19 @@ class MultiModalPaperQuery():
         QUERY = """MATCH (p:Paper {title: $title, year: $year})
         OPTIONAL MATCH (p)-[:CITES]->(cited:Paper)
         OPTIONAL MATCH (cited)-[:HAS_INSTITUTION]->(inst:Institution)-[:LOCATED_IN]->(country:Country)
-        RETURN p.title as paper_title, p.year as paper_year, p.PredominantCountry as predominant_country, p.Authors as authors,
-        p.conference as conference, 
-        cited.title AS cited_title, cited.PredominantCountry as cited_predominant_country, cited.conference AS cited_conference, 
-        cited.Authors as cited_authors, country.name AS cited_country, inst.name as cited_institution
+        RETURN 
+        p.title as source_title, 
+        p.year as source_year, 
+        p.PredominantCountry as source_country, 
+        p.Authors as source_authors,
+        p.conference as source_conference, 
+        cited.title AS cited_title, 
+        cited.year as cited_year,
+        cited.PredominantCountry as cited_predominant_country, 
+        cited.conference AS cited_conference, 
+        cited.Authors as cited_authors, 
+        country.name AS cited_country, 
+        inst.name as cited_institution
         """
         df_results = self.query_graph_db(query=QUERY, parameters=parameters.model_dump())
         return df_results
@@ -336,10 +357,21 @@ class MultiModalPaperQuery():
         OPTIONAL MATCH (p:Paper)-[:CITES]->(cited)
         OPTIONAL MATCH (cited)-[:HAS_INSTITUTION]->(inst:Institution)-[:LOCATED_IN]->(country:Country)
         OPTIONAL MATCH (p)-[:HAS_INSTITUTION]->(p_inst:Institution)-[:LOCATED_IN]->(p_country:Country)
-        RETURN p.title as paper_title, p.year as paper_year, p.PredominantCountry as predominant_country, p.Authors as authors,
-        p.conference as conference, p_inst.name as source_institution, p_country.name as source_country,
-        cited.title AS cited_title, cited.PredominantCountry as cited_predominant_country, cited.conference AS cited_conference, 
-        cited.Authors as cited_authors, country.name AS cited_country, inst.name as cited_institution
+        RETURN 
+        p.title as source_title, 
+        p.year as source_year, 
+        p.PredominantCountry as source_predominant_country, 
+        p.Authors as source_authors,
+        p.conference as source_conference, 
+        p_inst.name as source_institution, 
+        p_country.name as source_country,
+        cited.title AS cited_title, 
+        cited.year as cited_year,
+        cited.PredominantCountry as cited_predominant_country,
+        cited.conference AS cited_conference, 
+        cited.Authors as cited_authors, 
+        country.name AS cited_country, 
+        inst.name as cited_institution
         """
         df_results = self.query_graph_db(query=QUERY, parameters=parameters.model_dump())
         return df_results    
@@ -423,15 +455,54 @@ class MultiModalPaperQuery():
         if len(df_citation) == 0 and not apply_join:
             return df_source
         
-        print(df_source.columns)
-        # df_test = df_source.with_columns(pl.col("citers").list.to_struct().alias("citers")).unnest('citers')
-        # df_test = df_source.explode('citers').unnest('citers')
-        print(df_citation.columns)
+        df_source.with_columns(
+            pl.col("source_title").cast(pl.String),
+            pl.col("source_year").cast(pl.String),
+            pl.col("cited_title").cast(pl.String),
+            pl.col("cited_year").cast(pl.String),
+        ).select([
+            'source_title',
+            'source_year',
+            'source_country',
+            'source_authors',
+            'source_conference',
+            'cited_title',
+            'cited_year',
+            'cited_predominant_country',
+            'cited_conference',
+            'cited_authors',
+            'cited_country',
+            'cited_institution'
+        ]).join(
+            df_citation.with_columns(
+                    pl.col("source_title").cast(pl.String),
+                    pl.col("source_year").cast(pl.String),
+                    pl.col("cited_title").cast(pl.String),
+                    pl.col("cited_year").cast(pl.String),
+            ).select([
+                'source_title',
+                'source_year',
+                'source_predominant_country',
+                'source_authors',
+                'source_conference',
+                'source_institution',
+                'source_country',
+                'cited_title',
+                'cited_year',
+                'cited_predominant_country',
+                'cited_conference',
+                'cited_authors',
+                'cited_country',
+                'cited_institution'                
+            ]),
+            on=["source_title", "source_year", "cited_title", "cited_year"]
+        )
         return df_source.join(df_citation, on=["source_title", "source_year", "citation_title", "citation_year"])
     
     def __get_citations_data_from_source(self, df_source: pl.DataFrame) -> pl.DataFrame:
         
         # UDF to use
+        print(df_source.columns)
         def get_citations_call(x): 
             # print(x)
             return self.get_citations(
@@ -444,9 +515,31 @@ class MultiModalPaperQuery():
             df_source.select(
                 pl.all(),
                 pl.struct("Title", "Year").alias("citers"),
-            ).with_columns(
+            )
+            .with_columns(
                 pl.col("citers").map_elements(get_citations_call).alias("citations")
-            ).explode("citations").unnest("citations")
+            )
+            .explode("citations")
+            .unnest("citations")
+            # .select([
+            #     'Conference',
+            #     'Title',
+            #     'Countries',
+            #     'KeyConcepts',
+            #     'Summary',
+            #     'Authors',
+            #     'Institutions',
+            #     'Abstract',
+            #     'TLDR',
+            #     'Year',
+            #     'Committee',
+            #     'cited_title',
+            #     'cited_predominant_country',
+            #     'cited_conference',
+            #     'cited_authors',
+            #     'cited_country',
+            #     'cited_institution'
+            # ])
         )
         return df_papers_with_citations 
     
