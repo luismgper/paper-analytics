@@ -47,43 +47,54 @@ class Milvus:
         self.milvus_client.insert(collection_name=self.collection_name, data=data)
         
     def search(self, text: str, output_fields: List, limit: int=10, hybrid: bool=False, hybrid_fields: List=[], expr: str=""):
-        if hybrid:
-            requests = []
-            for field in hybrid_fields:
-                search_param = {
-                    "data": [self.emb_text(text)],
-                    "anns_field": field,
-                    "param": {
-                        "metric_type": "IP",
-                        "params": {"nprobe": 10}
-                    },
-                    "expr": expr,
-                    "limit": limit,
-                }                   
-                requests.append(AnnSearchRequest(**search_param))
-                
-            ranker = RRFRanker()
-            response = self.milvus_client.hybrid_search(
+        
+        if text and text != "":
+            if hybrid:
+                requests = []
+                for field in hybrid_fields:
+                    search_param = {
+                        "data": [self.emb_text(text)],
+                        "anns_field": field,
+                        "param": {
+                            "metric_type": "IP",
+                            "params": {"nprobe": 10}
+                        },
+                        "expr": expr,
+                        "limit": limit,
+                    }                   
+                    requests.append(AnnSearchRequest(**search_param))
+                    
+                ranker = RRFRanker()
+                response = self.milvus_client.hybrid_search(
+                    collection_name=self.collection_name,
+                    reqs=requests,
+                    ranker=ranker,
+                    limit=limit,
+                    output_fields=output_fields,
+                )          
+                return response[0]
+            else:
+                search_res = self.milvus_client.search(
+                    collection_name=self.collection_name,
+                    data=[
+                        self.emb_text(text)
+                    ],  
+                    filter=expr,
+                    limit=limit, 
+                    anns_field="Abstract",
+                    search_params={"metric_type": self.metric_type, "params": {}},  # Inner product distance
+                    output_fields=output_fields, #["Abstract"],  # Return the text field
+                )
+                return search_res[0]
+        else: 
+            # Only filter by metadata
+            search_res = self.milvus_client.query(
                 collection_name=self.collection_name,
-                reqs=requests,
-                ranker=ranker,
-                limit=limit,
-                output_fields=output_fields,
-            )          
-            return response[0]
-        else:
-            search_res = self.milvus_client.search(
-                collection_name=self.collection_name,
-                data=[
-                    self.emb_text(text)
-                ],  
-                fitler=expr,
-                limit=limit, 
-                anns_field="Abstract",
-                search_params={"metric_type": self.metric_type, "params": {}},  # Inner product distance
-                output_fields=output_fields, #["Abstract"],  # Return the text field
+                filter=expr,
+                # limit=limit, 
+                output_fields=output_fields,                
             )
-            return search_res[0]
+            return [{"entity": hit} for hit in search_res]
     
     def emb_text(self, text:str):
         embedding = self.model.encode([text], normalize_embeddings=True)
