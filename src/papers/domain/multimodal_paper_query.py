@@ -212,30 +212,30 @@ class MultiModalPaperQuery():
     }
     
     RELATIONAL_DB =  {
-        # "CONFERENCE_MAPPING": {
-        #     "ccgrid": "data/RelationalDB/ccgrid.db",
-        #     "cloud": "data/RelationalDB/cloud.db",
-        #     "europar": "data/RelationalDB/europar.db",
-        #     "eurosys": "data/RelationalDB/eurosys.db",
-        #     "ic2e": "data/RelationalDB/ic2e.db",
-        #     "icdcs": "data/RelationalDB/icdcs.db",
-        #     "IEEEcloud": "data/RelationalDB/IEEEcloud.db",
-        #     "middleware": "data/RelationalDB/middleware.db",
-        #     "nsdi": "data/RelationalDB/nsdi.db",
-        #     "sigcomm": "data/RelationalDB/sigcomm.db",
-        # }
         "CONFERENCE_MAPPING": {
-            "ccgrid": "../data/RelationalDB/ccgrid.db",
-            "cloud": "../data/RelationalDB/cloud.db",
-            "europar": "../data/RelationalDB/europar.db",
-            "eurosys": "../data/RelationalDB/eurosys.db",
-            "ic2e": "../data/RelationalDB/ic2e.db",
-            "icdcs": "../data/RelationalDB/icdcs.db",
-            "IEEEcloud": "../data/RelationalDB/IEEEcloud.db",
-            "middleware": "../data/RelationalDB/middleware.db",
-            "nsdi": "../data/RelationalDB/nsdi.db",
-            "sigcomm": "../data/RelationalDB/sigcomm.db",
-        }        
+            "ccgrid": "data/RelationalDB/ccgrid.db",
+            "cloud": "data/RelationalDB/cloud.db",
+            "europar": "data/RelationalDB/europar.db",
+            "eurosys": "data/RelationalDB/eurosys.db",
+            "ic2e": "data/RelationalDB/ic2e.db",
+            "icdcs": "data/RelationalDB/icdcs.db",
+            "IEEEcloud": "data/RelationalDB/IEEEcloud.db",
+            "middleware": "data/RelationalDB/middleware.db",
+            "nsdi": "data/RelationalDB/nsdi.db",
+            "sigcomm": "data/RelationalDB/sigcomm.db",
+        }
+        # "CONFERENCE_MAPPING": {
+        #     "ccgrid": "../data/RelationalDB/ccgrid.db",
+        #     "cloud": "../data/RelationalDB/cloud.db",
+        #     "europar": "../data/RelationalDB/europar.db",
+        #     "eurosys": "../data/RelationalDB/eurosys.db",
+        #     "ic2e": "../data/RelationalDB/ic2e.db",
+        #     "icdcs": "../data/RelationalDB/icdcs.db",
+        #     "IEEEcloud": "../data/RelationalDB/IEEEcloud.db",
+        #     "middleware": "../data/RelationalDB/middleware.db",
+        #     "nsdi": "../data/RelationalDB/nsdi.db",
+        #     "sigcomm": "../data/RelationalDB/sigcomm.db",
+        # }        
     }
             
     def __init__(self, relational_db_client: db.SQLite, vector_db_client: db.Milvus, graph_db_client: db.Neo4j):
@@ -326,7 +326,7 @@ class MultiModalPaperQuery():
         df_result = pl.DataFrame([result["entity"] for result in results])
         return df_result
         
-    def get_conference_commitees(self, conferences: Optional[list[Conference]]) -> pl.DataFrame:
+    def get_conference_committees(self, conferences: Optional[list[Conference]]) -> pl.DataFrame:
         """
         Retrieve conference committees data from relational database
         
@@ -370,7 +370,18 @@ class MultiModalPaperQuery():
                         "committee_country": committee[3],
                     }
                 })        
-        return pl.DataFrame(committees)
+        return pl.DataFrame(
+            commitees_per_conference,
+            schema={
+                "conference": pl.String,
+                "year": pl.String,
+                "committee": pl.Struct([
+                    pl.Field("committee_name", pl.String),
+                    pl.Field("committee_institution", pl.String),
+                    pl.Field("committee_country", pl.String)
+                ])
+            }
+        )
         
     def get_citations(self, parameters: CitationParameters) -> pl.DataFrame:
         """Retrieve citations for a paper

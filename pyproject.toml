@@ -22,6 +22,7 @@ dependencies = [
     "pydantic>=2.11.3",
     "pymilvus[model]>=2.5.6",
     "pyspark>=3.5.5",
+    "seaborn>=0.13.2",
     "sentence-transformers>=4.1.0",
     "streamlit>=1.45.1",
     "stubs>=1.0.0",
@@ -35,6 +36,7 @@ dependencies = [
 main = 'src.papers.main:main'
 db_initialization = "scripts.db_initialization:start"
 ui_app="scripts.ui_app:main"
+paper_analytics_dashboard="scripts.paper_analytics_dashboard:main"
 
 
 [build-system]
