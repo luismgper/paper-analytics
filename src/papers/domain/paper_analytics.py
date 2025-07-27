@@ -28,13 +28,14 @@ class PaperAnalytics():
     def query_paper_count_per_conference_continent_and_year(
         self,
         text: Optional[str] = None,
-        limit: Optional[int] = None,
+        # limit: Optional[int] = None,
         conferences: Optional[list[mpq.Conference]] = None,
         years: Optional[list[str]] = None,
         continents: Optional[list[str]] = None
     ) -> pl.DataFrame:  
         """
         Method to query papers published per conference and continent
+        
         Args:
             conferences (Optional[list[Conference]], optional): Conferences to filter by. Defaults to None.
             years (Optional[list[str]], optional): Continents to filter by. Defaults to None.
@@ -73,6 +74,9 @@ class PaperAnalytics():
         )
         
         df_query = self.query_client.query(query_parameters)        
+        print(df_query.select("source_predominant_continent").unique().to_dicts())
+        [print(paper["source_title"]) for paper in df_query.select("source_title", "Summary").unique().to_dicts()]
+        
         df_result = (
             df_query
             .select([
@@ -113,6 +117,7 @@ class PaperAnalytics():
 
     def query_paper_count_per_conference_and_continent(
         self,
+        text: Optional[str] = None,        
         conferences: Optional[list[mpq.Conference]] = None,
         continents: Optional[list[str]] = None,    
     ) -> pl.DataFrame:
@@ -128,7 +133,7 @@ class PaperAnalytics():
         """
         
         df_result = (
-            self.query_paper_count_per_conference_continent_and_year(conferences=conferences, continents=continents)
+            self.query_paper_count_per_conference_continent_and_year(text=text, conferences=conferences, continents=continents)
             .group_by("source_conference", "source_predominant_continent")
             .agg([
                 pl.sum("paper_count")

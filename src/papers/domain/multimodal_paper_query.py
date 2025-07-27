@@ -788,7 +788,7 @@ class MultiModalPaperQuery():
             expr=expr,
             top_k=100
         )
-        # print("df_source_papers")
+        print(f"source papers found in vector db: {len(df_source_papers)}")
         # for paper in df_source_papers.to_dicts()[:3]:
         #     print(paper)
         conferences = df_source_papers.select("Conference").unique().to_dicts()
@@ -830,6 +830,7 @@ class MultiModalPaperQuery():
             on=["Conference", "Year"],
             how="left"
         )
+        print(f"source papers with committees: {len(df_source_papers)}")
         # print("df_source_papers with committees")
         # for paper in df_source_papers.to_dicts()[:3]:
         #     print(paper)
@@ -839,6 +840,7 @@ class MultiModalPaperQuery():
             
             # Source data was recovered, then get its citation data
             df_source_with_citations = self.__get_citations_data_from_source(df_source_papers)      
+            print(f"source papers with citations: {len(df_source_with_citations.select("source_title", "source_year", "source_conference").unique())}")
             return df_source_with_citations
         
         return []

@@ -192,13 +192,12 @@ class StreamlitPaperAnalytics:
     def render_filters_sidebar(self, analysis_type=None):
         """Render filter controls in sidebar based on selected analysis type"""
         st.sidebar.header("🔍 Filters")
-        
         # Define which filters are needed for each analysis type
         filter_requirements = {
-            "Papers by Conference, Continent & Year": ["conferences", "years", "continents"],
-            "Papers by Conference & Continent": ["conferences", "continents"],
-            "Committees by Conference, Country & Year": ["conferences", "years"],
-            "Committees by Continent & Year": ["conferences", "continents", "years"],
+            "Papers by Conference, Continent and Year": ["text","conferences", "years", "continents"],
+            "Papers by Conference and Continent": ["text", "conferences", "continents"],
+            "Committees by Conference, Country and Year": ["conferences", "years"],
+            "Committees by Continent and Year": ["conferences", "continents", "years"],
             "Committees by Continent": ["conferences", "continents"]
         }
         
@@ -212,7 +211,19 @@ class StreamlitPaperAnalytics:
             if not analysis_type:
                 st.sidebar.info("Select an analysis type to see relevant filters")
         
-        # Conference filter - using your Conference enum
+        # Conference filter - using Conference enum
+        if "text" in required_filters:
+            text = st.sidebar.text_input(
+                "Search papers by title and content topic",
+                placeholder="Enter keywords to search papers...",
+                key="text_query_input",
+                help="Search for papers containing specific keywords in title or content"
+            )
+            filters['text'] = text if text else None
+        else:
+            filters['text'] = None    
+        
+        # Conference filter - using Conference enum
         if "conferences" in required_filters:
             available_conferences = [conf.value for conf in Conference]
             conferences = st.sidebar.multiselect(
@@ -975,6 +986,7 @@ class StreamlitPaperAnalytics:
                 with st.spinner("Running analysis..."):
                     if analysis_type == "Papers by Conference, Continent and Year":
                         result = st.session_state.analytics_client.query_paper_count_per_conference_continent_and_year(
+                            text=filters['text'],
                             conferences=filters['conferences'],
                             years=filters['years'],
                             continents=filters['continents']
@@ -982,15 +994,17 @@ class StreamlitPaperAnalytics:
                         self.display_dataframe_with_download(result, "Papers by Conference, Continent and Year", "papers_conf_cont_year")
                         self.create_paper_visualizations(result)
                         
-                    elif analysis_type == "Papers by Conference & Continent":
+                    elif analysis_type == "Papers by Conference and Continent":
+                        print(filters["text"])
                         result = st.session_state.analytics_client.query_paper_count_per_conference_and_continent(
+                            text=filters['text'],                            
                             conferences=filters['conferences'],
                             continents=filters['continents']
                         )
                         self.display_dataframe_with_download(result, "Papers by Conference and Continent", "papers_conf_cont")
                         self.create_paper_visualizations(result)
                         
-                    elif analysis_type == "Committees by Conference, Country & Year":
+                    elif analysis_type == "Committees by Conference, Country and Year":
                         result = st.session_state.analytics_client.get_committees_per_conference_country_year_count(
                             conferences=filters['conferences'],
                             years=filters['years']
