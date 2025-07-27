@@ -27,9 +27,9 @@ class PaperAnalytics():
         
     def query_paper_count_per_conference_continent_and_year(
         self, 
-        conferences: Optional[list[mpq.Conference]] = Field(default=None, description="Conference to use as filter"),
-        years: Optional[list[str]] = Field(default=None, description="Years to use as filter"),
-        continents: Optional[list[str]] = Field(default=None, description="Continents to filter by")
+        conferences: Optional[list[mpq.Conference]] = None,
+        years: Optional[list[str]] = None,
+        continents: Optional[list[str]] = None
     ) -> pl.DataFrame:  
         """
         Method to query papers published per conference and continent
@@ -90,15 +90,29 @@ class PaperAnalytics():
             .agg([
                 pl.len().alias("paper_count")
             ])
-            .sort("source_conference","source_year", "paper_count", descending=True)
+            # .sort("source_conference","source_year", "paper_count", descending=True)
         )
         
-        return df_result
+        # Ensure that there is no year that exists for a conference and continent combination but 
+        # not for other. If it does not exist, it is filled with 0
+        df_result_complete = (
+            df_result
+            .select("source_conference").unique()
+            .join(df_result.select("source_year").unique(), how="cross")
+            .join(df_result.select("source_predominant_continent").unique(), how="cross")
+            .join(df_result, on=["source_conference", "source_year", "source_predominant_continent"], how="left")
+            .with_columns(
+                pl.col("paper_count").fill_null(0)
+            )
+            .sort("source_conference", "source_year", "paper_count", descending=True)
+        )           
+        
+        return df_result_complete
 
     def query_paper_count_per_conference_and_continent(
         self,
-        conferences: Optional[list[mpq.Conference]] = Field(default=None, description="Conference to use as filter"),
-        continents: Optional[list[str]] = Field(default=None, description="Continents to filter by"),    
+        conferences: Optional[list[mpq.Conference]] = None,
+        continents: Optional[list[str]] = None,    
     ) -> pl.DataFrame:
         """
         Get paper count per conference and continent
@@ -154,7 +168,21 @@ class PaperAnalytics():
             ])
             .sort("conference", "year", "committee_count", descending=True)
         )
-        return df_result
+        
+        # Ensure that there is no year that exists for a conference and continent combination but 
+        # not for other. If it does not exist, it is filled with 0
+        df_result_complete = (
+            df_result.select("conference").unique()
+            .join(df_result.select("year").unique(), how="cross")
+            .join(df_result.select("committee_country").unique(), how="cross")
+            .join(df_result, on=["conference", "year", "committee_country"], how="left")
+            .with_columns(
+                pl.col("committee_count").fill_null(0)
+            )
+            .sort("conference", "year", "committee_count", descending=True)
+        )           
+        
+        return df_result_complete
 
     def get_committees_per_continent_year_count(
         self,
@@ -196,9 +224,23 @@ class PaperAnalytics():
             .agg([
                 pl.sum("committee_count").alias("committee_count")
             ])
-            .sort("conference", "year", "committee_count", descending=True)        
+            # .sort("conference", "year", "committee_count", descending=True)        
         )
-        return df_result
+        
+        # Ensure that there is no year that exists for a conference and continent combination but 
+        # not for other. If it does not exist, it is filled with 0
+        df_result_complete = (
+            df_result.select("conference").unique()
+            .join(df_result.select("year").unique(), how="cross")
+            .join(df_result.select("continent").unique(), how="cross")
+            .join(df_result, on=["conference", "year", "continent"], how="left")
+            .with_columns(
+                pl.col("committee_count").fill_null(0)
+            )
+            .sort("conference", "year", "committee_count", descending=True)
+        )        
+ 
+        return df_result_complete
 
     def get_committees_per_continent_count(
         self,

@@ -3,19 +3,17 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import polars as pl
-from typing import Optional, List
 import numpy as np
 import io
 
 # Your specific imports and initialization
 import src.papers.domain.multimodal_paper_query as mpq
-from src.papers.domain.multimodal_paper_query import Conference, FilterCondition
+from src.papers.domain.multimodal_paper_query import Conference
 from src.papers.io.db import Milvus, Neo4j, SQLite
 import os
-import pycountry_convert as pc
 
 # Import your analytics class (adjust path as needed)
-from src.papers.domain.paper_analytics import PaperAnalytics, Continent
+from src.papers.domain.paper_analytics import PaperAnalytics
 import torch
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)] 
 
@@ -126,35 +124,35 @@ class StreamlitPaperAnalytics:
         # Display current connection status
         if st.session_state.connection_status == "connected":
             st.sidebar.success("✅ Database Connected Successfully!")
-            st.sidebar.info("🔄 Connection initialized automatically on startup")
+            # st.sidebar.info("🔄 Connection initialized automatically on startup")
             
-            # Show connection details
-            with st.sidebar.expander("Connection Details"):
-                st.write("**Milvus:**", os.getenv("MILVUS_HOST", "N/A"))
-                st.write("**Neo4j:**", os.getenv("NEO4J_URI", "N/A"))
-                st.write("**SQLite:**", "Embedded")
+            # # Show connection details
+            # with st.sidebar.expander("Connection Details"):
+            #     st.write("**Milvus:**", os.getenv("MILVUS_HOST", "N/A"))
+            #     st.write("**Neo4j:**", os.getenv("NEO4J_URI", "N/A"))
+            #     st.write("**SQLite:**", "Embedded")
                 
         elif st.session_state.connection_status == "missing_vars":
             st.sidebar.error("❌ Missing Environment Variables")
             st.sidebar.error(st.session_state.connection_error)
             
-            # Provide manual configuration option
-            with st.sidebar.expander("🛠️ Manual Configuration", expanded=True):
-                st.warning("Set these environment variables and restart the app:")
+            # # Provide manual configuration option
+            # with st.sidebar.expander("🛠️ Manual Configuration", expanded=True):
+            #     st.warning("Set these environment variables and restart the app:")
                 
-                env_vars = [
-                    "MILVUS_COLLECTION", "MILVUS_ALIAS", "MILVUS_HOST", "MILVUS_PORT",
-                    "NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "NEO4J_DATABASE"
-                ]
+            #     env_vars = [
+            #         "MILVUS_COLLECTION", "MILVUS_ALIAS", "MILVUS_HOST", "MILVUS_PORT",
+            #         "NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "NEO4J_DATABASE"
+            #     ]
                 
-                for var in env_vars:
-                    current_value = os.getenv(var, "Not set")
-                    if var.endswith("PASSWORD"):
-                        st.code(f'{var}={"*" * len(current_value) if current_value != "Not set" else "Not set"}')
-                    else:
-                        st.code(f'{var}={current_value}')
+            #     for var in env_vars:
+            #         current_value = os.getenv(var, "Not set")
+            #         if var.endswith("PASSWORD"):
+            #             st.code(f'{var}={"*" * len(current_value) if current_value != "Not set" else "Not set"}')
+            #         else:
+            #             st.code(f'{var}={current_value}')
                         
-                st.info("💡 Tip: You can set these in a .env file or your system environment")
+            #     st.info("💡 Tip: You can set these in a .env file or your system environment")
                 
         elif st.session_state.connection_status == "error":
             st.sidebar.error("❌ Connection Failed")
@@ -172,23 +170,23 @@ class StreamlitPaperAnalytics:
             st.sidebar.warning("⚠️ Connection Status Unknown")
             
         # Advanced options
-        with st.sidebar.expander("🔧 Advanced Options"):
-            if st.button("🔄 Force Reconnect"):
-                st.session_state.analytics_client = None
-                st.session_state.connection_status = None
-                st.session_state.connection_error = None
-                self.auto_initialize_connection()
-                st.rerun()
+        # with st.sidebar.expander("🔧 Advanced Options"):
+            # if st.button("🔄 Force Reconnect"):
+            #     st.session_state.analytics_client = None
+            #     st.session_state.connection_status = None
+            #     st.session_state.connection_error = None
+            #     self.auto_initialize_connection()
+            #     st.rerun()
                 
-            if st.button("🧪 Test Connection"):
-                if st.session_state.analytics_client:
-                    try:
-                        # You could add a simple test query here
-                        st.sidebar.success("✅ Connection test passed!")
-                    except Exception as e:
-                        st.sidebar.error(f"❌ Connection test failed: {str(e)}")
-                else:
-                    st.sidebar.error("❌ No active connection to test")
+            # if st.button("🧪 Test Connection"):
+            #     if st.session_state.analytics_client:
+            #         try:
+            #             # You could add a simple test query here
+            #             st.sidebar.success("✅ Connection test passed!")
+            #         except Exception as e:
+            #             st.sidebar.error(f"❌ Connection test failed: {str(e)}")
+            #     else:
+            #         st.sidebar.error("❌ No active connection to test")
     
     def render_filters_sidebar(self, analysis_type=None):
         """Render filter controls in sidebar based on selected analysis type"""
@@ -207,7 +205,7 @@ class StreamlitPaperAnalytics:
         
         if analysis_type and analysis_type in filter_requirements:
             required_filters = filter_requirements[analysis_type]
-            st.sidebar.info(f"Filters for: **{analysis_type}**")
+            # st.sidebar.info(f"Filters for: **{analysis_type}**")
         else:
             required_filters = ["conferences", "years", "continents"]  # Default: show all
             if not analysis_type:
@@ -270,12 +268,14 @@ class StreamlitPaperAnalytics:
             df_pandas = df.to_pandas()
             
             # Display metrics
-            col1, col2, col3 = st.columns(3)
+            # col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             with col1:
                 st.metric("Total Rows", df.height)
+            # with col2:
+            #     st.metric("Total Columns", df.width)
+            # with col3:
             with col2:
-                st.metric("Total Columns", df.width)
-            with col3:
                 if 'paper_count' in df.columns:
                     st.metric("Total Papers", df.select(pl.sum('paper_count')).item())
                 elif 'committee_count' in df.columns:
@@ -320,8 +320,11 @@ class StreamlitPaperAnalytics:
         df_pandas = df.to_pandas()
         
         # Create tabs for different visualizations
-        tab1, tab2, tab3 = st.tabs(["📊 Bar Chart", "📈 Line Chart", "🥧 Pie Chart"])
-        
+        if 'source_year' in df_pandas.columns:
+            tab1, tab2, tab3 = st.tabs(["📊 Bar Chart", "📈 Line Chart", "🥧 Pie Chart"])
+        else:
+            tab1, tab3 = st.tabs(["📊 Bar Chart", "🥧 Pie Chart"])
+                
         with tab1:
             if 'source_year' in df_pandas.columns and 'source_conference' in df_pandas.columns:
                 fig, ax = plt.subplots(figsize=(14, 8))
@@ -354,8 +357,8 @@ class StreamlitPaperAnalytics:
                 plt.tight_layout()
                 self.create_matplotlib_chart(fig, "Papers by Conference and Continent")
         
-        with tab2:
-            if 'source_year' in df_pandas.columns:
+        if 'source_year' in df_pandas.columns:
+            with tab2:
                 fig, ax = plt.subplots(figsize=(14, 8))
                 
                 yearly_data = df_pandas.groupby(['source_year', 'source_predominant_continent'])['paper_count'].sum().reset_index()
@@ -466,7 +469,10 @@ class StreamlitPaperAnalytics:
         df_pandas = df.to_pandas()
         
         # Create tabs for different visualizations
-        tab1, tab2, tab3 = st.tabs(["📊 Bar Chart", "📈 Line Chart", "🥧 Pie Chart"])
+        if 'year' in df_pandas.columns:
+            tab1, tab2, tab3 = st.tabs(["📊 Bar Chart", "📈 Line Chart", "🥧 Pie Chart"])
+        else:
+            tab1, tab3 = st.tabs(["📊 Bar Chart", "🥧 Pie Chart"])
         
         with tab1:
             if 'conference' in df_pandas.columns:
@@ -499,27 +505,56 @@ class StreamlitPaperAnalytics:
                 plt.tight_layout()
                 self.create_matplotlib_chart(fig, "Committee Members by Conference")
         
-        with tab2:
-            if 'year' in df_pandas.columns:
-                fig, ax = plt.subplots(figsize=(14, 8))
+        if 'year' in df_pandas.columns:
+            with tab2:
+                if 'conference' in df_pandas.columns and 'year' in df_pandas.columns:
+                    # Get unique conferences
+                    conferences = df_pandas['conference'].unique()
+                    num_conferences = len(conferences)
+                    
+                    # Calculate subplot grid dimensions
+                    cols = min(2, num_conferences)  # Max 3 columns
+                    rows = (num_conferences + cols - 1) // cols  # Ceiling division
+                    
+                    # Create subplots
+                    fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
+                    
+                    # Handle case where there's only one subplot
+                    if num_conferences == 1:
+                        axes = [axes]
+                    elif rows == 1:
+                        axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
+                    else:
+                        axes = axes.flatten()
+                    
+                    # Plot each conference
+                    for i, conference in enumerate(conferences):
+                        ax = axes[i]
+                        
+                        # Filter data for this conference
+                        conference_data = df_pandas[df_pandas['conference'] == conference]
+                        yearly_data = conference_data.groupby(['year', 'continent'])['committee_count'].sum().reset_index()
+                        
+                        # Plot each continent for this conference
+                        for continent in yearly_data['continent'].unique():
+                            continent_data = yearly_data[yearly_data['continent'] == continent]
+                            ax.plot(continent_data['year'], continent_data['committee_count'],
+                                marker='o', linewidth=2, markersize=6, label=continent)
+                        
+                        ax.set_xlabel('Year')
+                        ax.set_ylabel('Number of Committee Members')
+                        ax.set_title(f'Committee Trends - {conference}')
+                        ax.legend()
+                        ax.grid(True, alpha=0.3)
+                        ax.tick_params(axis='x', rotation=45)
+                    
+                    # Hide empty subplots if any
+                    for i in range(num_conferences, len(axes)):
+                        axes[i].set_visible(False)
+                    
+                    plt.tight_layout()
+                    self.create_matplotlib_chart(fig, "Committee Trends by Conference")
                 
-                yearly_data = df_pandas.groupby(['year', 'continent'])['committee_count'].sum().reset_index()
-                
-                for continent in yearly_data['continent'].unique():
-                    continent_data = yearly_data[yearly_data['continent'] == continent]
-                    ax.plot(continent_data['year'], continent_data['committee_count'], 
-                           marker='o', linewidth=2, markersize=6, label=continent)
-                
-                ax.set_xlabel('Year')
-                ax.set_ylabel('Number of Committee Members')
-                ax.set_title('Committee Trends Over Time by Continent')
-                ax.legend()
-                ax.grid(True, alpha=0.3)
-                plt.xticks(rotation=45)
-                plt.tight_layout()
-                
-                self.create_matplotlib_chart(fig, "Committee Trends Over Time")
-        
         with tab3:
             if 'conference' in df_pandas.columns:
                 conferences = df_pandas['conference'].unique()
@@ -601,6 +636,103 @@ class StreamlitPaperAnalytics:
                 
                 plt.tight_layout()
                 self.create_matplotlib_chart(fig, "Committee Distribution by Continent")
+
+    
+    def create_committee_country_visualizations(self, df: pl.DataFrame):
+        """Create matplotlib visualizations for committee country data"""
+        if df.height == 0:
+            return
+            
+        df_pandas = df.to_pandas()
+        
+        # Create tabs for different visualizations
+        tab1, tab2 = st.tabs(["📊 Bar Chart", "📈 Line Chart"])
+        
+        with tab1:
+            if 'conference' in df_pandas.columns and 'country' in df_pandas.columns:
+                fig, ax = plt.subplots(figsize=(14, 8))
+                
+                # Group by conference and country
+                conference_data = df_pandas.groupby(['conference', 'country'])['committee_count'].sum().reset_index()
+                
+                # Get top countries to avoid overcrowding
+                top_countries = df_pandas.groupby('country')['committee_count'].sum().nlargest(10).index
+                filtered_data = conference_data[conference_data['country'].isin(top_countries)]
+                
+                conferences = filtered_data['conference'].unique()
+                countries = filtered_data['country'].unique()
+                
+                x = np.arange(len(conferences))
+                width = 0.8 / len(countries)
+                
+                for i, country in enumerate(countries):
+                    country_data = filtered_data[filtered_data['country'] == country]
+                    values = [country_data[country_data['conference'] == conf]['committee_count'].sum() 
+                             if conf in country_data['conference'].values else 0 
+                             for conf in conferences]
+                    
+                    ax.bar(x + i * width, values, width, label=country, alpha=0.8)
+                
+                ax.set_xlabel('Conference')
+                ax.set_ylabel('Number of Committee Members')
+                ax.set_title('Committee Members by Conference and Country (Top 10 Countries)')
+                ax.set_xticks(x + width * (len(countries) - 1) / 2)
+                ax.set_xticklabels(conferences, rotation=45)
+                ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                ax.grid(True, alpha=0.3)
+                
+                plt.tight_layout()
+                self.create_matplotlib_chart(fig, "Committee Members by Conference and Country")
+        
+        with tab2:
+            if 'year' in df_pandas.columns and 'country' in df_pandas.columns:
+                fig, ax = plt.subplots(figsize=(14, 8))
+                
+                # Group and sort data properly for line chart
+                yearly_data = df_pandas.groupby(['year', 'country'])['committee_count'].sum().reset_index()
+                
+                # Sort by year to ensure proper line progression
+                yearly_data = yearly_data.sort_values('year')
+                
+                # Get top countries and years
+                top_countries = df_pandas.groupby('country')['committee_count'].sum().nlargest(8).index
+                filtered_yearly = yearly_data[yearly_data['country'].isin(top_countries)]
+                
+                countries = sorted(filtered_yearly['country'].unique())
+                years = sorted(filtered_yearly['year'].unique())
+                
+                # Plot line for each country
+                for country in countries:
+                    country_data = filtered_yearly[filtered_yearly['country'] == country]
+                    
+                    # Create complete year series (fill missing years with 0)
+                    country_series = pd.DataFrame({'year': years})
+                    country_series = country_series.merge(
+                        country_data[['year', 'committee_count']], 
+                        on='year', 
+                        how='left'
+                    ).fillna(0)
+                    
+                    # Sort again to be absolutely sure
+                    country_series = country_series.sort_values('year')
+                    
+                    ax.plot(country_series['year'], country_series['committee_count'], 
+                           marker='o', linewidth=2, markersize=6, label=country)
+                
+                ax.set_xlabel('Year')
+                ax.set_ylabel('Number of Committee Members')
+                ax.set_title('Committee Trends Over Time by Country (Top 8 Countries)')
+                ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                ax.grid(True, alpha=0.3)
+                
+                # Set x-axis to show all years as integers
+                ax.set_xticks(years)
+                ax.set_xticklabels([str(int(year)) for year in years], rotation=45)
+                
+                plt.tight_layout()
+                
+                self.create_matplotlib_chart(fig, "Committee Trends Over Time by Country")
+    
     
     def run_analytics_queries(self):
         """Run analytics queries based on selected analysis type"""
@@ -608,7 +740,7 @@ class StreamlitPaperAnalytics:
             st.error("Please initialize the database connection first!")
             return
         
-        st.header("📊 Analytics Dashboard")
+        # st.header("📊 Analytics Dashboard")
         
         # Analysis type selection
         analysis_type = st.selectbox(
@@ -690,7 +822,7 @@ class StreamlitPaperAnalytics:
     def run(self):
         """Main application runner"""
         st.title("📊 Paper Analytics Dashboard")
-        st.markdown("*Using matplotlib visualizations with multi-database integration*")
+        # st.markdown("*Using matplotlib visualizations with multi-database integration*")
         st.markdown("---")
         
         # Setup connection status display
@@ -700,8 +832,8 @@ class StreamlitPaperAnalytics:
         self.run_analytics_queries()
         
         # Footer
-        st.markdown("---")
-        st.markdown("Built with ❤️ using Streamlit, Matplotlib & Seaborn")
+        # st.markdown("---")
+        # st.markdown("Built with ❤️ using Streamlit, Matplotlib & Seaborn")
 
 # Run the application
 if __name__ == "__main__":
