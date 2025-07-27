@@ -172,6 +172,19 @@ class MultiModalPaperQuery():
         "nsdi",
         "sigcomm",    
     ]
+  
+    GRAPH_DB_MAP_CONFERENCE_TO_DC = {
+        Conference.ccgrid: "ccgrid",
+        Conference.cloud: "socc",
+        Conference.europar: "europar",
+        Conference.eurosy: "eurosys",
+        Conference.ic2e: "ic2e",
+        Conference.icdcs: "icdcs",
+        Conference.IEEEcloud: "ieeecloud",
+        Conference.middleware: "middleware",
+        Conference.nsdi: "nsdi",
+        Conference.sigcomm: "sigcomm",            
+    }
     
     VECTOR_DB = {
         "OUTPUT_FIELDS": [
@@ -324,6 +337,10 @@ class MultiModalPaperQuery():
         
         # Create dataframe from results
         df_result = pl.DataFrame([result["entity"] for result in results])
+        
+        print("\n\nvector db conferences")
+        for conference in df_result.select("Conference").unique():
+            print(conference)
         return df_result
         
     def get_conference_committees(self, conferences: Optional[list[Conference]]) -> pl.DataFrame:
@@ -414,6 +431,55 @@ class MultiModalPaperQuery():
         """
         df_results = self.query_graph_db(query=QUERY, parameters=parameters.model_dump())
         return df_results
+    
+    def get_citations_batch(self, papers_per_conference: dict) -> pl.DataFrame:
+        
+        QUERY = """
+        UNWIND $papers AS paper_info
+        MATCH (p:Paper {title: paper_info.title, year: paper_info.year})
+        OPTIONAL MATCH (p)-[:CITES]->(cited:Paper)
+        OPTIONAL MATCH (cited)-[:HAS_INSTITUTION]->(inst:Institution)-[:LOCATED_IN]->(country:Country)
+        RETURN
+            p.title as source_title,
+            p.year as source_year,
+            p.PredominantCountry as source_country,
+            p.PredominantContinent as source_predominant_continent,
+            p.Authors as source_authors,
+            p.conference as source_conference,
+            cited.title AS cited_title,
+            cited.year as cited_year,
+            cited.PredominantCountry as cited_predominant_country,
+            cited.PredominantContinent as cited_predominant_continent,
+            cited.conference AS cited_conference,
+            cited.Authors as cited_authors,
+            country.name AS cited_country,
+            inst.name as cited_institution
+        """
+        
+        results = []
+        for conference in papers_per_conference:
+            db = self.GRAPH_DB_MAP_CONFERENCE_TO_DC[conference["Conference"]]
+            df_results = self.query_graph_db(
+                query=QUERY, 
+                parameters={"papers": conference["papers"]},
+                databases=[db]
+            )
+            if len(df_results) > 0: 
+                string_conversions = []
+                for col in df_results.columns:
+                    col_dtype = df_results[col].dtype
+                    if not isinstance(col_dtype, pl.List):
+                        # string_conversions.append(
+                        #     pl.col(col).map_elements(lambda x: str(x) if x is not None else None, return_dtype=pl.String).alias(col)
+                        # )
+                    # else:
+                        # Regular cast to string
+                        string_conversions.append(pl.col(col).cast(pl.String))
+                
+                df_results = df_results.with_columns(string_conversions)
+                results.append(df_results)            
+        
+        return pl.concat(results, how="vertical")        
     
     def get_citers(self, parameters: CitationParameters) -> pl.DataFrame:
         """Retrieve papers citing a paper
@@ -550,24 +616,44 @@ class MultiModalPaperQuery():
     def __get_citations_data_from_source(self, df_source: pl.DataFrame) -> pl.DataFrame:
         
         # UDF to use
-        def get_citations_call(x): 
-            # print(x)
-            return self.get_citations(
-                CitationParameters(
-                    **{"title": x["Title"], "year": x["Year"]}
-                )
-            ).to_dicts()
-                
-        df_papers_with_citations = (
-            df_source.select(
-                pl.all(),
-                pl.struct("Title", "Year").alias("citers"),
-            )
+        # def get_citations_call(x): 
+        #     # print(x)
+        #     return self.get_citations(
+        #         CitationParameters(
+        #             **{"title": x["Title"], "year": x["Year"]}
+        #         )
+        #     ).to_dicts()
+        
+        papers_per_conference = (
+            df_source
             .with_columns(
-                pl.col("citers").map_elements(get_citations_call).alias("citations")
+                pl.col("Title").alias("title"),
+                pl.col("Year").alias("year")
             )
-            .explode("citations")
-            .unnest("citations")
+            .select("title", "year", "Conference")
+            .unique()
+            .group_by("Conference")
+            .agg([
+                pl.struct(["title", "year"]).alias("papers")
+            ])
+            .to_dicts()
+        )
+        df_citations = self.get_citations_batch(papers_per_conference)
+        print(df_citations)
+        
+        
+        df_papers_with_citations = (
+            df_source
+            .with_columns(
+                pl.col("Conference").alias("source_conference"),
+                pl.col("Title").alias("source_title"),
+                pl.col("Year").alias("source_year"),
+            )
+            .join(
+                other=df_citations,
+                on=["source_title", "source_year", "source_conference"],
+                how="left",
+            )
             .select([
                 'Committee',
                 'source_title',
@@ -589,8 +675,42 @@ class MultiModalPaperQuery():
                 'cited_authors',
                 'cited_country',
                 'cited_institution'
-            ])
+            ])            
         )
+        
+        # df_papers_with_citations = (
+        #     df_source.select(
+        #         pl.all(),
+        #         pl.struct("Title", "Year").alias("citers"),
+        #     )
+        #     .with_columns(
+        #         pl.col("citers").map_elements(get_citations_call).alias("citations")
+        #     )
+        #     .explode("citations")
+        #     .unnest("citations")
+        #     .select([
+        #         'Committee',
+        #         'source_title',
+        #         'source_year',
+        #         'source_country',
+        #         'source_predominant_continent',
+        #         'source_authors',
+        #         'source_conference',
+        #         'KeyConcepts',
+        #         'Summary',
+        #         'Authors',
+        #         'Institutions',
+        #         'Abstract',
+        #         'TLDR',                
+        #         'cited_title',
+        #         'cited_year',
+        #         'cited_predominant_country',
+        #         'cited_conference',
+        #         'cited_authors',
+        #         'cited_country',
+        #         'cited_institution'
+        #     ])
+        # )
         # print("df_citation")
         # for paper in df_papers_with_citations.to_dicts()[:3]:
         #     print(paper)
@@ -671,7 +791,7 @@ class MultiModalPaperQuery():
         df_source_papers = self.query_vector_db(
             text=filters.text,
             expr=expr,
-            # top_k=100
+            top_k=100
         )
         # print("df_source_papers")
         # for paper in df_source_papers.to_dicts()[:3]:
