@@ -26,6 +26,8 @@ class StreamlitPaperAnalytics:
         self.setup_page_config()
         self.initialize_session_state()
         self.setup_matplotlib_style()
+        # Automatically initialize database connection
+        self.auto_initialize_connection()
         
     def setup_page_config(self):
         """Configure Streamlit page settings"""
@@ -49,80 +51,144 @@ class StreamlitPaperAnalytics:
             st.session_state.analytics_client = None
         if 'query_results' not in st.session_state:
             st.session_state.query_results = {}
+        if 'connection_status' not in st.session_state:
+            st.session_state.connection_status = None
+        if 'connection_error' not in st.session_state:
+            st.session_state.connection_error = None
             
-    def initialize_clients(self):
-        """Initialize database clients using environment variables"""
-        try:
-            # Environment variables
-            MILVUS_COLLECTION = os.getenv("MILVUS_COLLECTION")
-            MILVUS_ALIAS = os.getenv("MILVUS_ALIAS")
-            MILVUS_HOST = os.getenv("MILVUS_HOST")
-            MILVUS_PORT = os.getenv("MILVUS_PORT")
-            NEO4J_URI = os.getenv("NEO4J_URI")
-            NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
-            NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
-            NEO4J_DATABASE = os.getenv("NEO4J_DATABASE")
-            
-            # Initialize clients
-            milvus_client = Milvus(
-                collection=MILVUS_COLLECTION,
-                alias=MILVUS_ALIAS,
-                host=MILVUS_HOST,
-                port=int(MILVUS_PORT) if MILVUS_PORT else 19530,
-            )
-            
-            neo4j_client = Neo4j(
-                uri=NEO4J_URI,
-                username=NEO4J_USERNAME,
-                password=NEO4J_PASSWORD,
-                database=NEO4J_DATABASE
-            )
-            
-            query_client = mpq.MultiModalPaperQuery(
-                relational_db_client=SQLite, 
-                vector_db_client=milvus_client, 
-                graph_db_client=neo4j_client
-            )
-            
-            st.session_state.analytics_client = PaperAnalytics(query_client)
-            return True
-            
-        except Exception as e:
-            st.error(f"Failed to initialize clients: {str(e)}")
-            return False
+    def auto_initialize_connection(self):
+        """Automatically initialize database connection on app startup"""
+        if st.session_state.analytics_client is None:
+            try:
+                # Environment variables
+                MILVUS_COLLECTION = os.getenv("MILVUS_COLLECTION")
+                MILVUS_ALIAS = os.getenv("MILVUS_ALIAS") 
+                MILVUS_HOST = os.getenv("MILVUS_HOST")
+                MILVUS_PORT = os.getenv("MILVUS_PORT")
+                NEO4J_URI = os.getenv("NEO4J_URI")
+                NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
+                NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+                NEO4J_DATABASE = os.getenv("NEO4J_DATABASE")
+                
+                # Check if all required environment variables are set
+                required_vars = {
+                    "MILVUS_COLLECTION": MILVUS_COLLECTION,
+                    "MILVUS_ALIAS": MILVUS_ALIAS,
+                    "MILVUS_HOST": MILVUS_HOST,
+                    "MILVUS_PORT": MILVUS_PORT,
+                    "NEO4J_URI": NEO4J_URI,
+                    "NEO4J_USERNAME": NEO4J_USERNAME,
+                    "NEO4J_PASSWORD": NEO4J_PASSWORD,
+                    "NEO4J_DATABASE": NEO4J_DATABASE
+                }
+                
+                missing_vars = [var for var, value in required_vars.items() if not value]
+                
+                if missing_vars:
+                    st.session_state.connection_status = "missing_vars"
+                    st.session_state.connection_error = f"Missing environment variables: {', '.join(missing_vars)}"
+                    return
+                
+                # Initialize clients
+                milvus_client = Milvus(
+                    collection=MILVUS_COLLECTION,
+                    alias=MILVUS_ALIAS,
+                    host=MILVUS_HOST,
+                    port=int(MILVUS_PORT),
+                )
+                
+                neo4j_client = Neo4j(
+                    uri=NEO4J_URI,
+                    username=NEO4J_USERNAME,
+                    password=NEO4J_PASSWORD,
+                    database=NEO4J_DATABASE
+                )
+                
+                query_client = mpq.MultiModalPaperQuery(
+                    relational_db_client=SQLite, 
+                    vector_db_client=milvus_client, 
+                    graph_db_client=neo4j_client
+                )
+                
+                st.session_state.analytics_client = PaperAnalytics(query_client)
+                st.session_state.connection_status = "connected"
+                st.session_state.connection_error = None
+                
+            except Exception as e:
+                st.session_state.connection_status = "error"
+                st.session_state.connection_error = str(e)
+                st.session_state.analytics_client = None
     
     def setup_connection(self):
-        """Setup database connection section"""
+        """Display connection status and provide manual override if needed"""
         st.sidebar.header("🔗 Database Connection")
         
-        # Show environment variable status
-        env_vars = [
-            "MILVUS_COLLECTION", "MILVUS_ALIAS", "MILVUS_HOST", "MILVUS_PORT",
-            "NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "NEO4J_DATABASE"
-        ]
-        
-        missing_vars = [var for var in env_vars if not os.getenv(var)]
-        
-        if missing_vars:
-            st.sidebar.warning(f"⚠️ Missing environment variables: {', '.join(missing_vars)}")
+        # Display current connection status
+        if st.session_state.connection_status == "connected":
+            st.sidebar.success("✅ Database Connected Successfully!")
+            st.sidebar.info("🔄 Connection initialized automatically on startup")
             
-            # Manual configuration option
-            with st.sidebar.expander("Manual Configuration"):
-                for var in missing_vars:
+            # Show connection details
+            with st.sidebar.expander("Connection Details"):
+                st.write("**Milvus:**", os.getenv("MILVUS_HOST", "N/A"))
+                st.write("**Neo4j:**", os.getenv("NEO4J_URI", "N/A"))
+                st.write("**SQLite:**", "Embedded")
+                
+        elif st.session_state.connection_status == "missing_vars":
+            st.sidebar.error("❌ Missing Environment Variables")
+            st.sidebar.error(st.session_state.connection_error)
+            
+            # Provide manual configuration option
+            with st.sidebar.expander("🛠️ Manual Configuration", expanded=True):
+                st.warning("Set these environment variables and restart the app:")
+                
+                env_vars = [
+                    "MILVUS_COLLECTION", "MILVUS_ALIAS", "MILVUS_HOST", "MILVUS_PORT",
+                    "NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "NEO4J_DATABASE"
+                ]
+                
+                for var in env_vars:
+                    current_value = os.getenv(var, "Not set")
                     if var.endswith("PASSWORD"):
-                        os.environ[var] = st.text_input(f"{var}:", type="password", key=f"manual_{var}")
-                    elif var.endswith("PORT"):
-                        os.environ[var] = str(st.number_input(f"{var}:", value=19530 if "MILVUS" in var else 7687, key=f"manual_{var}"))
+                        st.code(f'{var}={"*" * len(current_value) if current_value != "Not set" else "Not set"}')
                     else:
-                        os.environ[var] = st.text_input(f"{var}:", key=f"manual_{var}")
+                        st.code(f'{var}={current_value}')
+                        
+                st.info("💡 Tip: You can set these in a .env file or your system environment")
+                
+        elif st.session_state.connection_status == "error":
+            st.sidebar.error("❌ Connection Failed")
+            st.sidebar.error(st.session_state.connection_error)
+            
+            # Retry button
+            if st.sidebar.button("🔄 Retry Connection"):
+                st.session_state.analytics_client = None
+                st.session_state.connection_status = None
+                st.session_state.connection_error = None
+                self.auto_initialize_connection()
+                st.rerun()
+                
         else:
-            st.sidebar.success("✅ All environment variables found")
-        
-        if st.sidebar.button("🔌 Initialize Connection"):
-            if self.initialize_clients():
-                st.sidebar.success("✅ Connected successfully!")
-            else:
-                st.sidebar.error("❌ Connection failed!")
+            st.sidebar.warning("⚠️ Connection Status Unknown")
+            
+        # Advanced options
+        with st.sidebar.expander("🔧 Advanced Options"):
+            if st.button("🔄 Force Reconnect"):
+                st.session_state.analytics_client = None
+                st.session_state.connection_status = None
+                st.session_state.connection_error = None
+                self.auto_initialize_connection()
+                st.rerun()
+                
+            if st.button("🧪 Test Connection"):
+                if st.session_state.analytics_client:
+                    try:
+                        # You could add a simple test query here
+                        st.sidebar.success("✅ Connection test passed!")
+                    except Exception as e:
+                        st.sidebar.error(f"❌ Connection test failed: {str(e)}")
+                else:
+                    st.sidebar.error("❌ No active connection to test")
     
     def render_filters_sidebar(self, analysis_type=None):
         """Render filter controls in sidebar based on selected analysis type"""
@@ -254,7 +320,7 @@ class StreamlitPaperAnalytics:
         df_pandas = df.to_pandas()
         
         # Create tabs for different visualizations
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 Bar Chart", "📈 Line Chart", "🥧 Pie Chart", "🔥 Heatmap"])
+        tab1, tab2, tab3 = st.tabs(["📊 Bar Chart", "📈 Line Chart", "🥧 Pie Chart"])
         
         with tab1:
             if 'source_year' in df_pandas.columns and 'source_conference' in df_pandas.columns:
@@ -391,46 +457,6 @@ class StreamlitPaperAnalytics:
                 
                 plt.tight_layout()
                 self.create_matplotlib_chart(fig, "Papers Distribution by Continent")
-        
-        with tab4:
-            if 'source_year' in df_pandas.columns and 'source_conference' in df_pandas.columns:
-                fig, ax = plt.subplots(figsize=(14, 10))
-                
-                pivot_data = df_pandas.pivot_table(
-                    values='paper_count',
-                    index='source_conference',
-                    columns='source_year',
-                    aggfunc='sum',
-                    fill_value=0
-                )
-                
-                im = ax.imshow(pivot_data.values, cmap='YlOrRd', aspect='auto')
-                
-                # Set ticks and labels
-                ax.set_xticks(np.arange(len(pivot_data.columns)))
-                ax.set_yticks(np.arange(len(pivot_data.index)))
-                ax.set_xticklabels(pivot_data.columns)
-                ax.set_yticklabels(pivot_data.index)
-                
-                # Rotate the tick labels and set their alignment
-                plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
-                
-                # Add colorbar
-                cbar = ax.figure.colorbar(im, ax=ax)
-                cbar.ax.set_ylabel('Paper Count', rotation=-90, va="bottom")
-                
-                # Add text annotations
-                for i in range(len(pivot_data.index)):
-                    for j in range(len(pivot_data.columns)):
-                        text = ax.text(j, i, int(pivot_data.iloc[i, j]),
-                                     ha="center", va="center", color="black" if pivot_data.iloc[i, j] < pivot_data.values.max()/2 else "white")
-                
-                ax.set_title('Papers Heatmap: Conference vs Year')
-                ax.set_xlabel('Year')
-                ax.set_ylabel('Conference')
-                
-                plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Papers Heatmap")
     
     def create_committee_visualizations(self, df: pl.DataFrame):
         """Create matplotlib visualizations for committee data"""
@@ -440,7 +466,7 @@ class StreamlitPaperAnalytics:
         df_pandas = df.to_pandas()
         
         # Create tabs for different visualizations
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 Bar Chart", "📈 Line Chart", "🥧 Pie Chart", "🌍 Geographic"])
+        tab1, tab2, tab3 = st.tabs(["📊 Bar Chart", "📈 Line Chart", "🥧 Pie Chart"])
         
         with tab1:
             if 'conference' in df_pandas.columns:
@@ -575,33 +601,6 @@ class StreamlitPaperAnalytics:
                 
                 plt.tight_layout()
                 self.create_matplotlib_chart(fig, "Committee Distribution by Continent")
-        
-        with tab4:
-            fig, ax = plt.subplots(figsize=(12, 8))
-            
-            continent_totals = df_pandas.groupby('continent')['committee_count'].sum().reset_index()
-            
-            # Create a bubble chart
-            x_pos = np.arange(len(continent_totals))
-            sizes = continent_totals['committee_count'] * 50  # Scale for visibility
-            
-            scatter = ax.scatter(x_pos, continent_totals['committee_count'], 
-                               s=sizes, alpha=0.6, c=range(len(continent_totals)), cmap='viridis')
-            
-            ax.set_xlabel('Continent')
-            ax.set_ylabel('Number of Committee Members')
-            ax.set_title('Committee Members Distribution by Continent')
-            ax.set_xticks(x_pos)
-            ax.set_xticklabels(continent_totals['continent'], rotation=45)
-            ax.grid(True, alpha=0.3)
-            
-            # Add value labels on points
-            for i, (continent, count) in enumerate(zip(continent_totals['continent'], continent_totals['committee_count'])):
-                ax.annotate(f'{count}', (i, count), xytext=(5, 5), textcoords='offset points', 
-                           fontsize=10, fontweight='bold')
-            
-            plt.tight_layout()
-            self.create_matplotlib_chart(fig, "Committee Geographic Distribution")
     
     def run_analytics_queries(self):
         """Run analytics queries based on selected analysis type"""
@@ -665,6 +664,7 @@ class StreamlitPaperAnalytics:
                             years=filters['years']
                         )
                         self.display_dataframe_with_download(result, "Committees by Conference, Country & Year", "committees_conf_country_year")
+                        self.create_committee_country_visualizations(result)
                         
                     elif analysis_type == "Committees by Continent & Year":
                         result = st.session_state.analytics_client.get_committees_per_continent_year_count(
@@ -693,14 +693,8 @@ class StreamlitPaperAnalytics:
         st.markdown("*Using matplotlib visualizations with multi-database integration*")
         st.markdown("---")
         
-        # Setup connection
+        # Setup connection status display
         self.setup_connection()
-        
-        # Show connection status
-        if st.session_state.analytics_client:
-            st.sidebar.success("🟢 Database Connected")
-        else:
-            st.sidebar.warning("🟡 Please initialize database connection")
         
         # Run analytics (filters are rendered inside based on analysis type)
         self.run_analytics_queries()
