@@ -26,7 +26,9 @@ class PaperAnalytics():
         self.query_client = query_client
         
     def query_paper_count_per_conference_continent_and_year(
-        self, 
+        self,
+        text: Optional[str] = None,
+        limit: Optional[int] = None,
         conferences: Optional[list[mpq.Conference]] = None,
         years: Optional[list[str]] = None,
         continents: Optional[list[str]] = None
@@ -65,7 +67,7 @@ class PaperAnalytics():
                 
         query_parameters = mpq.QueryParameters(
             source_filters=mpq.SourceFilters(
-                text=None,
+                text=text,
                 filters=filter_conditions if len(filter_conditions) > 0 else None
             )
         )

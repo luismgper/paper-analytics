@@ -338,9 +338,6 @@ class MultiModalPaperQuery():
         # Create dataframe from results
         df_result = pl.DataFrame([result["entity"] for result in results])
         
-        print("\n\nvector db conferences")
-        for conference in df_result.select("Conference").unique():
-            print(conference)
         return df_result
         
     def get_conference_committees(self, conferences: Optional[list[Conference]]) -> pl.DataFrame:
@@ -639,8 +636,6 @@ class MultiModalPaperQuery():
             .to_dicts()
         )
         df_citations = self.get_citations_batch(papers_per_conference)
-        print(df_citations)
-        
         
         df_papers_with_citations = (
             df_source
