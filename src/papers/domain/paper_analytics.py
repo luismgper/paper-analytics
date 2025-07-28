@@ -37,6 +37,7 @@ class PaperAnalytics():
         Method to query papers published per conference and continent
         
         Args:
+            text (Optional[str]): Topic of title or content of paper to filter by. Applies automatically top 100 hits
             conferences (Optional[list[Conference]], optional): Conferences to filter by. Defaults to None.
             years (Optional[list[str]], optional): Continents to filter by. Defaults to None.
             continents (Optional[list[str]], optional): Years to filter by. Defaults to None.
@@ -74,9 +75,6 @@ class PaperAnalytics():
         )
         
         df_query = self.query_client.query(query_parameters)        
-        print(df_query.select("source_predominant_continent").unique().to_dicts())
-        [print(paper["source_title"]) for paper in df_query.select("source_title", "Summary").unique().to_dicts()]
-        
         df_result = (
             df_query
             .select([
@@ -125,6 +123,7 @@ class PaperAnalytics():
         Get paper count per conference and continent
 
         Args:
+            text (Optional[str]): Topic of title or content of paper to filter by. Applies automatically top 100 hits
             conferences (Optional[list[mpq.Conference]], optional): Conferences to filter by. Defaults to Field(default=None, description="Conference to use as filter").
             continents (Optional[list[str]], optional): Continent to filter by. Defaults to Field(default=None, description="Continents to filter by").
 
@@ -141,7 +140,134 @@ class PaperAnalytics():
             .sort("source_conference", "paper_count", descending=True)
         )
         return df_result    
+
+    def query_citation_count_per_conference_continent_and_year(
+        self,
+        text: Optional[str] = None,
+        # limit: Optional[int] = None,
+        conferences: Optional[list[mpq.Conference]] = None,
+        years: Optional[list[str]] = None,
+        continents: Optional[list[str]] = None,
+        cited_continents: Optional[list[str]] = None,
+    ) -> pl.DataFrame:  
+        """
+        Query citations of papers published per conference and continent
         
+        Args:
+            text (Optional[str]): Topic of title or content of paper to filter by. Applies automatically top 100 hits
+            conferences (Optional[list[Conference]], optional): Conferences in which source paper citation was published to filter by. Defaults to None.
+            years (Optional[list[str]], optional): Years when Continents source paper authors are from to filter by. Defaults to None.
+            continents (Optional[list[str]], optional): Continents of authors source paper was published to filter by. Defaults to None.
+            cited_continents (Optional[list[str]], optional): Years when source paper was published to filter by. Defaults to None.
+            
+        Returns:
+            pl.DataFrame: Dataframe with calculated number of papers published in each conference,
+                        year and continent
+        """
+        filter_conditions = []
+        if conferences and len(conferences) > 0:
+            filter_conditions.append(
+                mpq.FilterCondition(
+                    connector=mpq.LogicConnector.none.value,
+                    field="Conference",
+                    operator=mpq.ComparisonOperator.eq.value,
+                    values=conferences
+                )
+            )
+        
+        if years and len(years) > 0:
+            filter_conditions.append(
+                mpq.FilterCondition(
+                    connector=mpq.LogicConnector.and_op.value if len(filter_conditions) > 0 else mpq.LogicConnector.none.value,
+                    field="Year",
+                    operator=mpq.ComparisonOperator.eq.value,
+                    values=years
+                )
+            )
+                
+        query_parameters = mpq.QueryParameters(
+            source_filters=mpq.SourceFilters(
+                text=text,
+                filters=filter_conditions if len(filter_conditions) > 0 else None
+            )
+        )
+        
+        df_query = self.query_client.query(query_parameters)    
+        df_result = (
+            df_query
+            .select([
+                "source_title",
+                "source_year",
+                "source_predominant_continent",
+                "source_conference",
+                "cited_year",
+                "cited_title",
+                "cited_predominant_continent",
+            ])
+            .explode("source_predominant_continent")        
+            .explode("cited_predominant_continent")
+            .filter(
+                pl.when(continents is not None)
+                .then(pl.col("source_predominant_continent").is_in(continents))
+                .otherwise(True) &       
+                pl.when(cited_continents is not None)
+                .then(pl.col("cited_predominant_continent").is_in(cited_continents))
+                .otherwise(True)                            
+            )
+            .unique()
+            .group_by("source_year", "source_conference", "cited_predominant_continent")
+            .agg([
+                pl.len().alias("paper_count")
+            ])
+            # .sort("source_conference","source_year", "paper_count", descending=True)
+        )
+        
+        # Ensure that there is no year that exists for a conference and continent combination but 
+        # not for other. If it does not exist, it is filled with 0
+        df_result_complete = (
+            df_result
+            .select("source_conference").unique()
+            .join(df_result.select("source_year").unique(), how="cross")
+            .join(df_result.select("cited_predominant_continent").unique(), how="cross")
+            .join(df_result, on=["source_conference", "source_year", "cited_predominant_continent"], how="left")
+            .with_columns(
+                pl.col("paper_count").fill_null(0)
+            )
+            .sort("source_conference", "source_year", "paper_count", descending=True)
+        )           
+        
+        return df_result_complete
+
+    def query_citation_count_per_conference_and_continent(
+        self,
+        text: Optional[str] = None,        
+        conferences: Optional[list[mpq.Conference]] = None,
+        continents: Optional[list[str]] = None,    
+        cited_continents: Optional[list[str]] = None,    
+    ) -> pl.DataFrame:
+        """
+        GQuery citations of paper count per conference and continent
+
+        Args:
+            text (Optional[str]): Topic of title or content of paper to filter by. Applies automatically top 100 hits
+            conferences (Optional[list[mpq.Conference]], optional): Conferences to filter by. Defaults to Field(default=None, description="Conference to use as filter").
+            continents (Optional[list[str]], optional): Continent to filter by. Defaults to Field(default=None, description="Continents to filter by").
+            cited_continents (Optional[list[str]], optional): Years when source paper was published to filter by. Defaults to None. 
+
+        Returns:
+            pl.DataFrame: Results of query aggregated
+        """
+        
+        df_result = (
+            self.query_citation_count_per_conference_continent_and_year(text=text, conferences=conferences, continents=continents, cited_continents=cited_continents)
+            .group_by("source_conference", "cited_predominant_continent")
+            .agg([
+                pl.sum("paper_count")
+            ])
+            .sort("source_conference", "paper_count", descending=True)
+        )
+        return df_result    
+    
     def get_committees_per_conference_country_year_count(
         self,
         conferences: Optional[list[mpq.Conference]]=None,

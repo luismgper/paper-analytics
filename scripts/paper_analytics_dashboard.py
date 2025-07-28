@@ -196,6 +196,8 @@ class StreamlitPaperAnalytics:
         filter_requirements = {
             "Papers by Conference, Continent and Year": ["text","conferences", "years", "continents"],
             "Papers by Conference and Continent": ["text", "conferences", "continents"],
+            "Citations by Conference, Continent and Year": ["text","conferences", "years", "continents", "cited_continents"],
+            "Citations by Conference and Continent": ["text", "conferences", "continents", "cited_continents"],            
             "Committees by Conference, Country and Year": ["conferences", "years"],
             "Committees by Continent and Year": ["conferences", "continents", "years"],
             "Committees by Continent": ["conferences", "continents"]
@@ -227,7 +229,7 @@ class StreamlitPaperAnalytics:
         if "conferences" in required_filters:
             available_conferences = [conf.value for conf in Conference]
             conferences = st.sidebar.multiselect(
-                "Select Conferences",
+                "Select conferences",
                 options=available_conferences,
                 key="selected_conferences",
                 help="Filter by specific conferences"
@@ -240,7 +242,7 @@ class StreamlitPaperAnalytics:
         # Year filter
         if "years" in required_filters:
             years = st.sidebar.multiselect(
-                "Select Years",
+                "Select years",
                 options=[str(year) for year in range(2012, 2023)],
                 key="selected_years",
                 help="Filter by specific years"
@@ -252,14 +254,26 @@ class StreamlitPaperAnalytics:
         # Continent filter
         if "continents" in required_filters:
             continents = st.sidebar.multiselect(
-                "Select Continents",
-                options=["Asia", "Europe", "North America", "South America", "Africa", "Oceania", "Antarctica"],
+                "Select continents",
+                options=["Asia", "Europe", "North America", "South America", "Africa", "Oceania"],
                 key="selected_continents",
                 help="Filter by specific continents"
             )
             filters['continents'] = continents if continents else None
         else:
             filters['continents'] = None
+            
+        # Cited continent filter
+        if "cited_continents" in required_filters:
+            cited_continents = st.sidebar.multiselect(
+                "Select cited continents",
+                options=["Asia", "Europe", "North America", "South America", "Africa", "Oceania"],
+                key="selected_cited_continents",
+                help="Filter by specific cited continents"
+            )
+            filters['cited_continents'] = cited_continents if cited_continents else None
+        else:
+            filters['cited_continents'] = None            
         
         # Show a summary of active filters
         active_filters = [k for k, v in filters.items() if v is not None and len(v) > 0]
@@ -337,7 +351,7 @@ class StreamlitPaperAnalytics:
             tab1, tab3 = st.tabs(["📊 Bar Chart", "🥧 Pie Chart"])
                 
         with tab1:
-            if 'source_year' in df_pandas.columns and 'source_conference' in df_pandas.columns:
+            if 'source_conference' in df_pandas.columns:
                 fig, ax = plt.subplots(figsize=(14, 8))
                 
                 grouped_data = df_pandas.groupby(['source_conference', 'source_predominant_continent'])['paper_count'].sum().reset_index()
@@ -358,15 +372,15 @@ class StreamlitPaperAnalytics:
                     ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
                 
                 ax.set_xlabel('Conference')
-                ax.set_ylabel('Number of Papers')
-                ax.set_title('Papers by Conference and Continent')
+                ax.set_ylabel('Number of papers')
+                ax.set_title('Papers by conference and continent')
                 ax.set_xticks(x + width * (len(continents) - 1) / 2)
                 ax.set_xticklabels(conferences, rotation=45)
                 ax.legend()
                 ax.grid(True, alpha=0.3)
                 
                 plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Papers by Conference and Continent")
+                self.create_matplotlib_chart(fig, "Papers by conference and continent")
         
         if 'source_year' in df_pandas.columns:
             with tab2:
@@ -423,8 +437,8 @@ class StreamlitPaperAnalytics:
                             marker='o', linewidth=2, markersize=6, label=continent)
                     
                     ax.set_xlabel('Year')
-                    ax.set_ylabel('Number of Papers')
-                    ax.set_title(f'Committee Trends - {conference}')
+                    ax.set_ylabel('Number of papers')
+                    ax.set_title(f'Paper trends - {conference}')
                     ax.legend()
                     ax.grid(True, alpha=0.3)
                     ax.tick_params(axis='x', rotation=45)
@@ -434,7 +448,7 @@ class StreamlitPaperAnalytics:
                     axes[i].set_visible(False)
                 
                 plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Paper Trends Over Time")               
+                self.create_matplotlib_chart(fig, "Paper trends over time")               
         
         with tab3:
             if 'source_conference' in df_pandas.columns:
@@ -504,12 +518,12 @@ class StreamlitPaperAnalytics:
                 for i in range(n_conferences, len(axes)):
                     axes[i].set_visible(False)
                 
-                plt.suptitle('Distribution of Papers by Continent per Conference', 
+                plt.suptitle('Distribution of papers by continent per conference', 
                            fontsize=16, fontweight='bold', y=0.98)
                 plt.tight_layout()
                 plt.subplots_adjust(top=0.93, right=0.85)  # Make room for legends
                 
-                self.create_matplotlib_chart(fig, "Papers Distribution by Conference and Continent")    
+                self.create_matplotlib_chart(fig, "Papers distribution by conference and continent")    
         
         # with tab3:
         #     if 'source_conference' in df_pandas.columns:
@@ -593,6 +607,176 @@ class StreamlitPaperAnalytics:
                 
         #         plt.tight_layout()
         #         self.create_matplotlib_chart(fig, "Papers Distribution by Continent")
+        
+    def create_citation_visualizations(self, df: pl.DataFrame):
+        """Create matplotlib visualizations for paper data"""
+        if df.height == 0:
+            return
+            
+        df_pandas = df.to_pandas()
+        
+        # Create tabs for different visualizations
+        if 'source_year' in df_pandas.columns:
+            tab1, tab2, tab3 = st.tabs(["📊 Bar Chart", "📈 Line Chart", "🥧 Pie Chart"])
+        else:
+            tab1, tab3 = st.tabs(["📊 Bar Chart", "🥧 Pie Chart"])
+                
+        with tab1:
+            print(df_pandas.columns)
+            if 'source_conference' in df_pandas.columns:
+                fig, ax = plt.subplots(figsize=(14, 8))
+                
+                grouped_data = df_pandas.groupby(['source_conference', 'cited_predominant_continent'])['paper_count'].sum().reset_index()
+                
+                # Create grouped bar chart
+                conferences = grouped_data['source_conference'].unique()
+                continents = grouped_data['cited_predominant_continent'].unique()
+                
+                x = np.arange(len(conferences))
+                width = 0.8 / len(continents)
+                
+                for i, continent in enumerate(continents):
+                    continent_data = grouped_data[grouped_data['cited_predominant_continent'] == continent]
+                    values = [continent_data[continent_data['source_conference'] == conf]['paper_count'].sum() 
+                             if conf in continent_data['source_conference'].values else 0 
+                             for conf in conferences]
+                    
+                    ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
+                
+                ax.set_xlabel('Conference')
+                ax.set_ylabel('Number of citations')
+                ax.set_title('Citations by conference and continent')
+                ax.set_xticks(x + width * (len(continents) - 1) / 2)
+                ax.set_xticklabels(conferences, rotation=45)
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+                
+                plt.tight_layout()
+                self.create_matplotlib_chart(fig, "Citations by conference and continent")
+        
+        if 'source_year' in df_pandas.columns:
+            with tab2:                
+                # Get unique conferences
+                conferences = df_pandas['source_conference'].unique()
+                num_conferences = len(conferences)
+                
+                # Calculate subplot grid dimensions
+                cols = min(2, num_conferences)  # Max 3 columns
+                rows = (num_conferences + cols - 1) // cols  # Ceiling division
+                
+                # Create subplots
+                fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
+                
+                # Handle case where there's only one subplot
+                if num_conferences == 1:
+                    axes = [axes]
+                elif rows == 1:
+                    axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
+                else:
+                    axes = axes.flatten()
+                
+                # Plot each conference
+                for i, conference in enumerate(conferences):
+                    ax = axes[i]
+                    
+                    # Filter data for this conference
+                    conference_data = df_pandas[df_pandas['source_conference'] == conference]
+                    yearly_data = conference_data.groupby(['source_year', 'cited_predominant_continent'])['paper_count'].sum().reset_index()
+                    
+                    # Plot each continent for this conference
+                    for continent in yearly_data['cited_predominant_continent'].unique():
+                        continent_data = yearly_data[yearly_data['cited_predominant_continent'] == continent]
+                        ax.plot(continent_data['source_year'], continent_data['paper_count'],
+                            marker='o', linewidth=2, markersize=6, label=continent)
+                    
+                    ax.set_xlabel('Year')
+                    ax.set_ylabel('Number of citations')
+                    ax.set_title(f'Citation trends - {conference}')
+                    ax.legend()
+                    ax.grid(True, alpha=0.3)
+                    ax.tick_params(axis='x', rotation=45)
+                
+                # Hide empty subplots if any
+                for i in range(num_conferences, len(axes)):
+                    axes[i].set_visible(False)
+                
+                plt.tight_layout()
+                self.create_matplotlib_chart(fig, "Citation trends over time")               
+        
+        with tab3:
+            if 'source_conference' in df_pandas.columns:
+                conferences = df_pandas['source_conference'].unique()
+                
+                # Calculate number of rows and columns for subplots
+                n_conferences = len(conferences)
+                n_cols = min(3, n_conferences)  # Max 3 columns
+                n_rows = (n_conferences + n_cols - 1) // n_cols  # Ceiling division
+                
+                fig, axes = plt.subplots(n_rows, n_cols, figsize=(7*n_cols, 6*n_rows))
+                
+                # Handle case where there's only one subplot
+                if n_conferences == 1:
+                    axes = [axes]
+                elif n_rows == 1 and n_cols > 1:
+                    axes = axes.flatten()
+                elif n_rows > 1:
+                    axes = axes.flatten()
+                
+                colors = plt.cm.Set3(np.linspace(0, 1, 10))
+                
+                for i, conference in enumerate(conferences):
+                    # Filter data for this conference
+                    conf_data = df_pandas[df_pandas['source_conference'] == conference]
+                    continent_totals = conf_data.groupby('cited_predominant_continent')['paper_count'].sum()
+                    
+                    if len(continent_totals) > 0:
+                        # Calculate percentages for legend
+                        total = continent_totals.sum()
+                        percentages = [(value/total)*100 for value in continent_totals.values]
+                        
+                        # Select colors for this conference's continents
+                        conf_colors = colors[:len(continent_totals)]
+                        
+                        # Create pie chart without percentage labels
+                        wedges, texts = axes[i].pie(
+                            continent_totals.values, 
+                            labels=None,  # No labels on the pie
+                            colors=conf_colors, 
+                            startangle=90,
+                            pctdistance=0.85,  
+                            labeldistance=1.1,                             
+                        )
+                        
+                        axes[i].set_title(f'{conference}\n({continent_totals.sum()} papers)', 
+                                        fontsize=11, fontweight='bold')
+                        
+                        # Create legend with percentages
+                        legend_labels = [f'{continent}: {percent:.1f}%' 
+                                       for continent, percent in zip(continent_totals.index, percentages)]
+                        
+                        axes[i].legend(wedges, legend_labels, 
+                                     title="Continents", 
+                                     loc="center left", 
+                                     bbox_to_anchor=(1, 0, 0.5, 1),
+                                     fontsize=10)
+                        
+                    else:
+                        axes[i].text(0.5, 0.5, f'{conference}\nNo data', 
+                                   ha='center', va='center', transform=axes[i].transAxes,
+                                   fontsize=12, fontweight='bold')
+                        axes[i].set_xlim(0, 1)
+                        axes[i].set_ylim(0, 1)
+                
+                # Hide unused subplots
+                for i in range(n_conferences, len(axes)):
+                    axes[i].set_visible(False)
+                
+                plt.suptitle('Distribution of citations by continent per conference', 
+                           fontsize=16, fontweight='bold', y=0.98)
+                plt.tight_layout()
+                plt.subplots_adjust(top=0.93, right=0.85)  # Make room for legends
+                
+                self.create_matplotlib_chart(fig, "Citation distribution by conference and continent")    
     
     def create_committee_visualizations(self, df: pl.DataFrame):
         """Create matplotlib visualizations for committee data"""
@@ -628,15 +812,15 @@ class StreamlitPaperAnalytics:
                     ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
                 
                 ax.set_xlabel('Conference')
-                ax.set_ylabel('Number of Committee Members')
-                ax.set_title('Committee Members by Conference and Continent')
+                ax.set_ylabel('Number of committee members')
+                ax.set_title('Committee members by conference and continent')
                 ax.set_xticks(x + width * (len(continents) - 1) / 2)
                 ax.set_xticklabels(conferences, rotation=45)
                 ax.legend()
                 ax.grid(True, alpha=0.3)
                 
                 plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Committee Members by Conference")
+                self.create_matplotlib_chart(fig, "Committee members by conference")
         
         if 'year' in df_pandas.columns:
             with tab2:
@@ -675,8 +859,8 @@ class StreamlitPaperAnalytics:
                                 marker='o', linewidth=2, markersize=6, label=continent)
                         
                         ax.set_xlabel('Year')
-                        ax.set_ylabel('Number of Committee Members')
-                        ax.set_title(f'Committee Trends - {conference}')
+                        ax.set_ylabel('Number of committee members')
+                        ax.set_title(f'Committee trends - {conference}')
                         ax.legend()
                         ax.grid(True, alpha=0.3)
                         ax.tick_params(axis='x', rotation=45)
@@ -686,7 +870,8 @@ class StreamlitPaperAnalytics:
                         axes[i].set_visible(False)
                     
                     plt.tight_layout()
-                    self.create_matplotlib_chart(fig, "Committee Trends by Conference")
+                    self.create_matplotlib_chart(fig, "Committee trends by conference")
+                    
         with tab3:
             if 'conference' in df_pandas.columns:
                 conferences = df_pandas['conference'].unique()
@@ -755,12 +940,12 @@ class StreamlitPaperAnalytics:
                 for i in range(n_conferences, len(axes)):
                     axes[i].set_visible(False)
                 
-                plt.suptitle('Distribution of Committee Members by Continent', 
+                plt.suptitle('Distribution of committee members by continent', 
                            fontsize=16, fontweight='bold', y=0.98)
                 plt.tight_layout()
                 plt.subplots_adjust(top=0.93, right=0.85)  # Make room for legends
                 
-                self.create_matplotlib_chart(fig, "Committee Distribution by Conference and Continent")    
+                self.create_matplotlib_chart(fig, "Committee distribution by conference and continent")    
                                 
         # with tab3:
         #     if 'conference' in df_pandas.columns:
@@ -954,6 +1139,8 @@ class StreamlitPaperAnalytics:
             [
                 "Papers by Conference, Continent and Year",
                 "Papers by Conference and Continent",
+                "Citations by Conference, Continent and Year",
+                "Citations by Conference and Continent",                
                 "Committees by Conference, Country and Year", 
                 "Committees by Continent and Year",
                 "Committees by Continent"
@@ -970,6 +1157,8 @@ class StreamlitPaperAnalytics:
             # "Committees by Continent": "🌐 Overview of committee member distribution by continent"
             "Papers by Conference, Continent and Year": "Analyze paper counts across conferences, continents and years",
             "Papers by Conference and Continent": "Compare paper distribution by conference and continent",
+            "Citations by Conference, Continent and Year": "Analyze citation counts across conferences, continents and years",
+            "Citations by Conference and Continent": "Compare citation distribution by conference and continent",            
             "Committees by Conference, Country and Year": "Track committee member distribution by conference, country, and year",
             "Committees by Continent and Year": "Analyze committee member trends across continents over time",
             "Committees by Continent": "Overview of committee member distribution by continent"            
@@ -995,7 +1184,6 @@ class StreamlitPaperAnalytics:
                         self.create_paper_visualizations(result)
                         
                     elif analysis_type == "Papers by Conference and Continent":
-                        print(filters["text"])
                         result = st.session_state.analytics_client.query_paper_count_per_conference_and_continent(
                             text=filters['text'],                            
                             conferences=filters['conferences'],
@@ -1003,6 +1191,27 @@ class StreamlitPaperAnalytics:
                         )
                         self.display_dataframe_with_download(result, "Papers by Conference and Continent", "papers_conf_cont")
                         self.create_paper_visualizations(result)
+                        
+                    if analysis_type == "Citations by Conference, Continent and Year":
+                        result = st.session_state.analytics_client.query_citation_count_per_conference_continent_and_year(
+                            text=filters['text'],
+                            conferences=filters['conferences'],
+                            years=filters['years'],
+                            continents=filters['continents'],
+                            cited_continents=filters['cited_continents'],
+                        )
+                        self.display_dataframe_with_download(result, "Papers by Conference, Continent and Year", "papers_conf_cont_year")
+                        self.create_citation_visualizations(result)
+                        
+                    elif analysis_type == "Citations by Conference and Continent":
+                        result = st.session_state.analytics_client.query_citation_count_per_conference_and_continent(
+                            text=filters['text'],                            
+                            conferences=filters['conferences'],
+                            continents=filters['continents'],
+                            cited_continents=filters['cited_continents'],
+                        )
+                        self.display_dataframe_with_download(result, "Papers by Conference and Continent", "papers_conf_cont")
+                        self.create_citation_visualizations(result)                        
                         
                     elif analysis_type == "Committees by Conference, Country and Year":
                         result = st.session_state.analytics_client.get_committees_per_conference_country_year_count(

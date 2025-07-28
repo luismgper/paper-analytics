@@ -666,6 +666,7 @@ class MultiModalPaperQuery():
                 'cited_title',
                 'cited_year',
                 'cited_predominant_country',
+                'cited_predominant_continent',
                 'cited_conference',
                 'cited_authors',
                 'cited_country',
@@ -830,11 +831,7 @@ class MultiModalPaperQuery():
             on=["Conference", "Year"],
             how="left"
         )
-        print(f"source papers with committees: {len(df_source_papers)}")
-        # print("df_source_papers with committees")
-        # for paper in df_source_papers.to_dicts()[:3]:
-        #     print(paper)
-            
+        print(f"source papers with committees: {len(df_source_papers)}")           
         
         if len(df_source_papers) > 0:
             
