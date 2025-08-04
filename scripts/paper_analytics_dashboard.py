@@ -12,6 +12,8 @@ import src.papers.domain.multimodal_paper_query as mpq
 from src.papers.domain.multimodal_paper_query import Conference
 from src.papers.io.db import Milvus, Neo4j, SQLite
 import os
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Import your analytics class (adjust path as needed)
 from src.papers.domain.paper_analytics import PaperAnalytics
@@ -125,36 +127,11 @@ class StreamlitPaperAnalytics:
         # Display current connection status
         if st.session_state.connection_status == "connected":
             st.sidebar.success("✅ Database Connected Successfully!")
-            # st.sidebar.info("🔄 Connection initialized automatically on startup")
-            
-            # # Show connection details
-            # with st.sidebar.expander("Connection Details"):
-            #     st.write("**Milvus:**", os.getenv("MILVUS_HOST", "N/A"))
-            #     st.write("**Neo4j:**", os.getenv("NEO4J_URI", "N/A"))
-            #     st.write("**SQLite:**", "Embedded")
                 
         elif st.session_state.connection_status == "missing_vars":
             st.sidebar.error("❌ Missing Environment Variables")
             st.sidebar.error(st.session_state.connection_error)
-            
-            # # Provide manual configuration option
-            # with st.sidebar.expander("🛠️ Manual Configuration", expanded=True):
-            #     st.warning("Set these environment variables and restart the app:")
-                
-            #     env_vars = [
-            #         "MILVUS_COLLECTION", "MILVUS_ALIAS", "MILVUS_HOST", "MILVUS_PORT",
-            #         "NEO4J_URI", "NEO4J_USERNAME", "NEO4J_PASSWORD", "NEO4J_DATABASE"
-            #     ]
-                
-            #     for var in env_vars:
-            #         current_value = os.getenv(var, "Not set")
-            #         if var.endswith("PASSWORD"):
-            #             st.code(f'{var}={"*" * len(current_value) if current_value != "Not set" else "Not set"}')
-            #         else:
-            #             st.code(f'{var}={current_value}')
-                        
-            #     st.info("💡 Tip: You can set these in a .env file or your system environment")
-                
+                           
         elif st.session_state.connection_status == "error":
             st.sidebar.error("❌ Connection Failed")
             st.sidebar.error(st.session_state.connection_error)
@@ -169,26 +146,7 @@ class StreamlitPaperAnalytics:
                 
         else:
             st.sidebar.warning("⚠️ Connection Status Unknown")
-            
-        # Advanced options
-        # with st.sidebar.expander("🔧 Advanced Options"):
-            # if st.button("🔄 Force Reconnect"):
-            #     st.session_state.analytics_client = None
-            #     st.session_state.connection_status = None
-            #     st.session_state.connection_error = None
-            #     self.auto_initialize_connection()
-            #     st.rerun()
                 
-            # if st.button("🧪 Test Connection"):
-            #     if st.session_state.analytics_client:
-            #         try:
-            #             # You could add a simple test query here
-            #             st.sidebar.success("✅ Connection test passed!")
-            #         except Exception as e:
-            #             st.sidebar.error(f"❌ Connection test failed: {str(e)}")
-            #     else:
-            #         st.sidebar.error("❌ No active connection to test")
-    
     def render_filters_sidebar(self, analysis_type=None):
         """Render filter controls in sidebar based on selected analysis type"""
         st.sidebar.header("🔍 Filters")
@@ -198,6 +156,7 @@ class StreamlitPaperAnalytics:
             "Papers by Conference and Continent": ["text", "conferences", "continents"],
             "Citations by Conference, Continent and Year": ["text","conferences", "years", "continents", "cited_continents"],
             "Citations by Conference and Continent": ["text", "conferences", "continents", "cited_continents"],            
+            "Citations by Conference and Source and Cited Continent": ["text", "conferences", "continents", "cited_continents"],            
             "Committees by Conference, Country and Year": ["conferences", "years"],
             "Committees by Continent and Year": ["conferences", "continents", "years"],
             "Committees by Continent": ["conferences", "continents"]
@@ -777,11 +736,190 @@ class StreamlitPaperAnalytics:
                 plt.subplots_adjust(top=0.93, right=0.85)  # Make room for legends
                 
                 self.create_matplotlib_chart(fig, "Citation distribution by conference and continent")    
+                
+    def create_citation_by_source_and_cited_continent_visualizations(self, df: pl.DataFrame):
+        """Create Sankey diagram visualizations for citation data"""
+        if df.height == 0:
+            return
+            
+        df_pandas = df.to_pandas()
+        
+        # Create single tab for Sankey diagram
+        tab1 = st.tabs(["🔄 Citation Flow Sankey"])
+        
+        with tab1[0]:
+            if 'source_conference' in df_pandas.columns and 'source_predominant_continent' in df_pandas.columns:
+                # Get unique conferences
+                conferences = df_pandas['source_conference'].unique()
+                num_conferences = len(conferences)
+                
+                if num_conferences == 0:
+                    st.warning("No conference data available for visualization.")
+                    return
+                
+                # Calculate subplot grid dimensions
+                cols = min(2, num_conferences)  # Max 2 columns for better readability
+                rows = (num_conferences + cols - 1) // cols  # Ceiling division
+                
+                # Create subplot titles for each conference
+                subplot_titles = [f"{conf}" for conf in conferences]
+                
+                # Create subplots with Sankey diagrams
+                fig = make_subplots(
+                    rows=rows, 
+                    cols=cols,
+                    subplot_titles=subplot_titles,
+                    specs=[[{"type": "sankey"} for _ in range(cols)] for _ in range(rows)],
+                    vertical_spacing=0.1,
+                    horizontal_spacing=0.05
+                )
+                
+                # Color palette for continents
+                continent_colors = {
+                    'Asia': 'rgba(31, 119, 180, 0.8)',
+                    'Europe': 'rgba(255, 127, 14, 0.8)', 
+                    'North America': 'rgba(44, 160, 44, 0.8)',
+                    'South America': 'rgba(214, 39, 40, 0.8)',
+                    'Africa': 'rgba(148, 103, 189, 0.8)',
+                    'Oceania': 'rgba(140, 86, 75, 0.8)'
+                }
+                
+                # Plot each conference
+                for i, conference in enumerate(conferences):
+                    # Calculate subplot position
+                    row = (i // cols) + 1
+                    col = (i % cols) + 1
+                    
+                    # Filter data for this conference
+                    conference_data = df_pandas[df_pandas['source_conference'] == conference]
+                    
+                    # Aggregate citation flows
+                    flow_data = (conference_data
+                            .groupby(['source_predominant_continent', 'cited_predominant_continent'])
+                            ['paper_count'].sum().reset_index())
+                    
+                    if len(flow_data) == 0:
+                        # Add empty sankey for conferences with no data
+                        fig.add_trace(
+                            go.Sankey(
+                                node=dict(
+                                    pad=15,
+                                    thickness=20,
+                                    line=dict(color="black", width=0.5),
+                                    label=["No Data"],
+                                    color=["rgba(128,128,128,0.5)"]
+                                ),
+                                link=dict(
+                                    source=[],
+                                    target=[],
+                                    value=[]
+                                )
+                            ),
+                            row=row, col=col
+                        )
+                        continue
+                    
+                    # Get unique continents for this conference
+                    source_continents = flow_data['source_predominant_continent'].unique().tolist()
+                    cited_continents = flow_data['cited_predominant_continent'].unique().tolist()
+                    
+                    # Create combined node list (source continents first, then cited continents)
+                    # Add prefixes to distinguish source from cited
+                    source_nodes = [f"Source: {cont}" for cont in source_continents]
+                    cited_nodes = [f"Cited: {cont}" for cont in cited_continents]
+                    all_nodes = source_nodes + cited_nodes
+                    
+                    # Create node index mapping
+                    node_dict = {node: idx for idx, node in enumerate(all_nodes)}
+                    
+                    # Prepare Sankey data
+                    source_indices = []
+                    target_indices = []
+                    values = []
+                    
+                    for _, row_data in flow_data.iterrows():
+                        source_cont = row_data['source_predominant_continent']
+                        cited_cont = row_data['cited_predominant_continent']
+                        citation_count = row_data['paper_count']
+                        
+                        if citation_count > 0:  # Only include non-zero flows
+                            source_idx = node_dict[f"Source: {source_cont}"]
+                            target_idx = node_dict[f"Cited: {cited_cont}"]
+                            
+                            source_indices.append(source_idx)
+                            target_indices.append(target_idx)
+                            values.append(citation_count)
+                    
+                    # Create node colors based on continent
+                    node_colors = []
+                    for node in all_nodes:
+                        # Extract continent name (remove "Source: " or "Cited: " prefix)
+                        continent = node.split(": ", 1)[1] if ": " in node else node
+                        node_colors.append(continent_colors.get(continent, 'rgba(128,128,128,0.8)'))
+                    
+                    # Create hover text
+                    hover_text = []
+                    for node in all_nodes:
+                        node_type = "Source" if node.startswith("Source:") else "Cited"
+                        continent = node.split(": ", 1)[1]
+                        
+                        if node_type == "Source":
+                            total_outgoing = sum(values[j] for j, src in enumerate(source_indices) 
+                                            if all_nodes[src] == node)
+                            hover_text.append(f"{node_type}: {continent}<br>Total Citations Given: {total_outgoing:,}")
+                        else:
+                            total_incoming = sum(values[j] for j, tgt in enumerate(target_indices) 
+                                            if all_nodes[tgt] == node)
+                            hover_text.append(f"{node_type}: {continent}<br>Total Citations Received: {total_incoming:,}")
+                    
+                    # Add Sankey trace
+                    fig.add_trace(
+                        go.Sankey(
+                            node=dict(
+                                pad=15,
+                                thickness=15,
+                                line=dict(color="black", width=0.5),
+                                label=[node.split(": ", 1)[1] for node in all_nodes],  # Show only continent names
+                                color=node_colors,
+                                hovertemplate='%{customdata}<extra></extra>',
+                                customdata=hover_text
+                            ),
+                            link=dict(
+                                source=source_indices,
+                                target=target_indices,
+                                value=values,
+                                hovertemplate='%{source.label} → %{target.label}<br>Citations: %{value:,}<extra></extra>'
+                            )
+                        ),
+                        row=row, col=col
+                    )
+                
+                # Update layout
+                fig.update_layout(
+                    title={
+                        'text': "Citation Flow: Source Continents to Cited Continents by Conference",
+                        'x': 0.5,
+                        'xanchor': 'center',
+                        'font': {'size': 16}
+                    },
+                    font_size=10,
+                    height=400 * rows,  # Adjust height based on number of rows
+                    margin=dict(l=50, r=50, t=80, b=50),
+                    showlegend=False
+                )
+                
+                # Display the plot in Streamlit
+                st.plotly_chart(fig, use_container_width=True)
+                
+            else:
+                st.error("Required columns not found in dataframe. Expected: 'source_conference', 'source_predominant_continent', 'cited_predominant_continent', 'paper_count'")
     
     def create_committee_visualizations(self, df: pl.DataFrame):
         """Create matplotlib visualizations for committee data"""
         if df.height == 0:
             return
+        
+        print("aqui 1")
             
         df_pandas = df.to_pandas()
         
@@ -946,88 +1084,6 @@ class StreamlitPaperAnalytics:
                 plt.subplots_adjust(top=0.93, right=0.85)  # Make room for legends
                 
                 self.create_matplotlib_chart(fig, "Committee distribution by conference and continent")    
-                                
-        # with tab3:
-        #     if 'conference' in df_pandas.columns:
-        #         conferences = df_pandas['conference'].unique()
-                
-        #         # Calculate number of rows and columns for subplots
-        #         n_conferences = len(conferences)
-        #         n_cols = min(3, n_conferences)  # Max 3 columns
-        #         n_rows = (n_conferences + n_cols - 1) // n_cols  # Ceiling division
-                
-        #         fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 5*n_rows))
-                
-        #         # Handle case where there's only one subplot
-        #         if n_conferences == 1:
-        #             axes = [axes]
-        #         elif n_rows == 1 and n_cols > 1:
-        #             axes = axes.flatten()
-        #         elif n_rows > 1:
-        #             axes = axes.flatten()
-                
-        #         colors = plt.cm.Pastel1(np.linspace(0, 1, 10))  # Generate enough colors
-                
-        #         for i, conference in enumerate(conferences):
-        #             # Filter data for this conference
-        #             conf_data = df_pandas[df_pandas['conference'] == conference]
-        #             continent_totals = conf_data.groupby('continent')['committee_count'].sum()
-                    
-        #             if len(continent_totals) > 0:
-        #                 # Select colors for this conference's continents
-        #                 conf_colors = colors[:len(continent_totals)]
-                        
-        #                 wedges, texts, autotexts = axes[i].pie(
-        #                     continent_totals.values, 
-        #                     labels=continent_totals.index, 
-        #                     autopct='%1.1f%%', 
-        #                     colors=conf_colors, 
-        #                     startangle=90
-        #                 )
-                        
-        #                 axes[i].set_title(f'{conference}\n({continent_totals.sum()} members)', 
-        #                                 fontsize=12, fontweight='bold')
-                        
-        #                 # Make percentage text more readable
-        #                 for autotext in autotexts:
-        #                     autotext.set_color('white')
-        #                     autotext.set_fontweight('bold')
-        #                     autotext.set_fontsize(9)
-        #             else:
-        #                 axes[i].text(0.5, 0.5, f'{conference}\nNo data', 
-        #                            ha='center', va='center', transform=axes[i].transAxes,
-        #                            fontsize=12, fontweight='bold')
-        #                 axes[i].set_xlim(0, 1)
-        #                 axes[i].set_ylim(0, 1)
-                
-        #         # Hide unused subplots
-        #         for i in range(n_conferences, len(axes)):
-        #             axes[i].set_visible(False)
-                
-        #         plt.suptitle('Distribution of Committee Members by Continent per Conference', 
-        #                    fontsize=16, fontweight='bold', y=0.98)
-        #         plt.tight_layout()
-        #         plt.subplots_adjust(top=0.93)  # Make room for suptitle
-                
-        #         self.create_matplotlib_chart(fig, "Committee Distribution by Conference and Continent")
-        #     else:
-        #         # Fallback: single pie chart if no conference data
-        #         fig, ax = plt.subplots(figsize=(10, 8))
-                
-        #         continent_totals = df_pandas.groupby('continent')['committee_count'].sum()
-                
-        #         colors = plt.cm.Pastel1(np.linspace(0, 1, len(continent_totals)))
-        #         wedges, texts, autotexts = ax.pie(continent_totals.values, labels=continent_totals.index, 
-        #                                         autopct='%1.1f%%', colors=colors, startangle=90)
-                
-        #         ax.set_title('Distribution of Committee Members by Continent')
-                
-        #         for autotext in autotexts:
-        #             autotext.set_color('white')
-        #             autotext.set_fontweight('bold')
-                
-        #         plt.tight_layout()
-        #         self.create_matplotlib_chart(fig, "Committee Distribution by Continent")
     
     def create_committee_country_visualizations(self, df: pl.DataFrame):
         """Create matplotlib visualizations for committee country data"""
@@ -1036,28 +1092,31 @@ class StreamlitPaperAnalytics:
             
         df_pandas = df.to_pandas()
         
+        print("aqui 2")
+        print(df_pandas.columns)
+        
         # Create tabs for different visualizations
         tab1, tab2 = st.tabs(["📊 Bar Chart", "📈 Line Chart"])
         
         with tab1:
-            if 'conference' in df_pandas.columns and 'country' in df_pandas.columns:
+            if 'conference' in df_pandas.columns and 'committee_country' in df_pandas.columns:
                 fig, ax = plt.subplots(figsize=(14, 8))
                 
                 # Group by conference and country
-                conference_data = df_pandas.groupby(['conference', 'country'])['committee_count'].sum().reset_index()
+                conference_data = df_pandas.groupby(['conference', 'committee_country'])['committee_count'].sum().reset_index()
                 
                 # Get top countries to avoid overcrowding
-                top_countries = df_pandas.groupby('country')['committee_count'].sum().nlargest(10).index
-                filtered_data = conference_data[conference_data['country'].isin(top_countries)]
+                top_countries = df_pandas.groupby('committee_country')['committee_count'].sum().nlargest(10).index
+                filtered_data = conference_data[conference_data['committee_country'].isin(top_countries)]
                 
                 conferences = filtered_data['conference'].unique()
-                countries = filtered_data['country'].unique()
+                countries = filtered_data['committee_country'].unique()
                 
                 x = np.arange(len(conferences))
                 width = 0.8 / len(countries)
                 
                 for i, country in enumerate(countries):
-                    country_data = filtered_data[filtered_data['country'] == country]
+                    country_data = filtered_data[filtered_data['committee_country'] == country]
                     values = [country_data[country_data['conference'] == conf]['committee_count'].sum() 
                              if conf in country_data['conference'].values else 0 
                              for conf in conferences]
@@ -1076,25 +1135,25 @@ class StreamlitPaperAnalytics:
                 self.create_matplotlib_chart(fig, "Committee Members by Conference and Country")
         
         with tab2:
-            if 'year' in df_pandas.columns and 'country' in df_pandas.columns:
+            if 'year' in df_pandas.columns and 'committee_country' in df_pandas.columns:
                 fig, ax = plt.subplots(figsize=(14, 8))
                 
                 # Group and sort data properly for line chart
-                yearly_data = df_pandas.groupby(['year', 'country'])['committee_count'].sum().reset_index()
+                yearly_data = df_pandas.groupby(['year', 'committee_country'])['committee_count'].sum().reset_index()
                 
                 # Sort by year to ensure proper line progression
                 yearly_data = yearly_data.sort_values('year')
                 
                 # Get top countries and years
-                top_countries = df_pandas.groupby('country')['committee_count'].sum().nlargest(8).index
-                filtered_yearly = yearly_data[yearly_data['country'].isin(top_countries)]
+                top_countries = df_pandas.groupby('committee_country')['committee_count'].sum().nlargest(8).index
+                filtered_yearly = yearly_data[yearly_data['committee_country'].isin(top_countries)]
                 
-                countries = sorted(filtered_yearly['country'].unique())
+                countries = sorted(filtered_yearly['committee_country'].unique())
                 years = sorted(filtered_yearly['year'].unique())
                 
                 # Plot line for each country
                 for country in countries:
-                    country_data = filtered_yearly[filtered_yearly['country'] == country]
+                    country_data = filtered_yearly[filtered_yearly['committee_country'] == country]
                     
                     # Create complete year series (fill missing years with 0)
                     country_series = pd.DataFrame({'year': years})
@@ -1141,6 +1200,7 @@ class StreamlitPaperAnalytics:
                 "Papers by Conference and Continent",
                 "Citations by Conference, Continent and Year",
                 "Citations by Conference and Continent",                
+                "Citations by Conference and Source and Cited Continent",                
                 "Committees by Conference, Country and Year", 
                 "Committees by Continent and Year",
                 "Committees by Continent"
@@ -1150,15 +1210,11 @@ class StreamlitPaperAnalytics:
         
         # Show description of selected analysis
         analysis_descriptions = {
-            # "Papers by Conference, Continent & Year": "📄 Analyze paper counts across conferences, continents and years",
-            # "Papers by Conference & Continent": "📊 Compare paper distribution by conference and continent",
-            # "Committees by Conference, Country & Year": "👥 Track committee member distribution by conference, country, and year",
-            # "Committees by Continent & Year": "🌍 Analyze committee member trends across continents over time",
-            # "Committees by Continent": "🌐 Overview of committee member distribution by continent"
             "Papers by Conference, Continent and Year": "Analyze paper counts across conferences, continents and years",
             "Papers by Conference and Continent": "Compare paper distribution by conference and continent",
             "Citations by Conference, Continent and Year": "Analyze citation counts across conferences, continents and years",
             "Citations by Conference and Continent": "Compare citation distribution by conference and continent",            
+            "Citations by Conference and Source and Cited Continent": "Compare citation distribution by conference and source and cited continent",            
             "Committees by Conference, Country and Year": "Track committee member distribution by conference, country, and year",
             "Committees by Continent and Year": "Analyze committee member trends across continents over time",
             "Committees by Continent": "Overview of committee member distribution by continent"            
@@ -1213,6 +1269,17 @@ class StreamlitPaperAnalytics:
                         self.display_dataframe_with_download(result, "Papers by Conference and Continent", "papers_conf_cont")
                         self.create_citation_visualizations(result)                        
                         
+                    elif analysis_type == "Citations by Conference and Source and Cited Continent":
+                        result = st.session_state.analytics_client.query_citation_count_per_conference_source_continent_and_year(
+                            text=filters['text'],                            
+                            conferences=filters['conferences'],
+                            continents=filters['continents'],
+                            cited_continents=filters['cited_continents'],
+                        )
+                        self.display_dataframe_with_download(result, "Papers by Conference and Continent", "papers_conf_cont")
+                        self.create_citation_by_source_and_cited_continent_visualizations(result)                        
+                                                
+                        
                     elif analysis_type == "Committees by Conference, Country and Year":
                         result = st.session_state.analytics_client.get_committees_per_conference_country_year_count(
                             conferences=filters['conferences'],
@@ -1221,7 +1288,7 @@ class StreamlitPaperAnalytics:
                         self.display_dataframe_with_download(result, "Committees by Conference, Country and Year", "committees_conf_country_year")
                         self.create_committee_country_visualizations(result)
                         
-                    elif analysis_type == "Committees by Continent & Year":
+                    elif analysis_type == "Committees by Continent and Year":
                         result = st.session_state.analytics_client.get_committees_per_continent_year_count(
                             conferences=filters['conferences'],
                             continents=filters['continents'],
