@@ -292,9 +292,9 @@ class StreamlitPaperAnalytics:
             mime="image/png"
         )
         plt.close(fig)
-    
+
     def create_paper_visualizations(self, df: pl.DataFrame):
-        """Create matplotlib visualizations for paper data"""
+        """Create plotly visualizations for paper data"""
         if df.height == 0:
             return
             
@@ -308,40 +308,59 @@ class StreamlitPaperAnalytics:
                 
         with tab1:
             if 'source_conference' in df_pandas.columns:
-                fig, ax = plt.subplots(figsize=(14, 8))
-                
                 grouped_data = df_pandas.groupby(['source_conference', 'source_predominant_continent'])['paper_count'].sum().reset_index()
                 
                 # Create grouped bar chart
                 conferences = grouped_data['source_conference'].unique()
                 continents = grouped_data['source_predominant_continent'].unique()
                 
-                x = np.arange(len(conferences))
-                width = 0.8 / len(continents)
+                fig = go.Figure()
                 
-                for i, continent in enumerate(continents):
+                # Add bars for each continent
+                for continent in continents:
                     continent_data = grouped_data[grouped_data['source_predominant_continent'] == continent]
                     values = [continent_data[continent_data['source_conference'] == conf]['paper_count'].sum() 
-                             if conf in continent_data['source_conference'].values else 0 
-                             for conf in conferences]
+                            if conf in continent_data['source_conference'].values else 0 
+                            for conf in conferences]
                     
-                    ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
+                    fig.add_trace(go.Bar(
+                        name=continent,
+                        x=conferences,
+                        y=values,
+                        opacity=0.8
+                    ))
                 
-                ax.set_xlabel('Conference')
-                ax.set_ylabel('Number of papers')
-                ax.set_title('Papers by conference and continent')
-                ax.set_xticks(x + width * (len(continents) - 1) / 2)
-                ax.set_xticklabels(conferences, rotation=45)
-                ax.legend()
-                ax.grid(True, alpha=0.3)
+                # Update layout
+                fig.update_layout(
+                    title='Papers by conference and continent',
+                    xaxis_title='Conference',
+                    yaxis_title='Number of papers',
+                    barmode='group',
+                    height=500,
+                    xaxis=dict(
+                        tickangle=45,
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    ),
+                    yaxis=dict(
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    ),
+                    legend=dict(
+                        orientation="v",
+                        yanchor="top",
+                        y=1,
+                        xanchor="left",
+                        x=1.01
+                    )
+                )
                 
-                plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Papers by conference and continent (totals)")
-                
+                st.plotly_chart(fig, use_container_width=True)
+                    
         with tab2:
             if 'source_conference' in df_pandas.columns:
-                fig, ax = plt.subplots(figsize=(14, 8))
-                
                 df_pandas_percentage = (
                     df
                     .group_by("source_conference", "source_predominant_continent")
@@ -359,33 +378,57 @@ class StreamlitPaperAnalytics:
                     .sort(['source_conference', 'source_predominant_continent'])                    
                 ).to_pandas()
                 print(df_pandas_percentage)
-                grouped_data = df_pandas_percentage#.groupby(['source_conference', 'source_predominant_continent'])['paper_count'].sum().reset_index()
+                grouped_data = df_pandas_percentage
                 
                 # Create grouped bar chart
                 conferences = grouped_data['source_conference'].unique()
                 continents = grouped_data['source_predominant_continent'].unique()
                 
-                x = np.arange(len(conferences))
-                width = 0.8 / len(continents)
+                fig = go.Figure()
                 
-                for i, continent in enumerate(continents):
+                # Add bars for each continent
+                for continent in continents:
                     continent_data = grouped_data[grouped_data['source_predominant_continent'] == continent]
                     values = [continent_data[continent_data['source_conference'] == conf]['paper_percentage'].sum() 
-                             if conf in continent_data['source_conference'].values else 0 
-                             for conf in conferences]
+                            if conf in continent_data['source_conference'].values else 0 
+                            for conf in conferences]
                     
-                    ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
+                    fig.add_trace(go.Bar(
+                        name=continent,
+                        x=conferences,
+                        y=values,
+                        opacity=0.8
+                    ))
                 
-                ax.set_xlabel('Conference')
-                ax.set_ylabel('Percentage of papers')
-                ax.set_title('Papers by conference and continent')
-                ax.set_xticks(x + width * (len(continents) - 1) / 2)
-                ax.set_xticklabels(conferences, rotation=45)
-                ax.legend()
-                ax.grid(True, alpha=0.3)
+                # Update layout
+                fig.update_layout(
+                    title='Papers by conference and continent (percentages)',
+                    xaxis_title='Conference',
+                    yaxis_title='Percentage of papers (%)',
+                    barmode='group',
+                    height=500,
+                    xaxis=dict(
+                        tickangle=45,
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    ),
+                    yaxis=dict(
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    ),
+                    legend=dict(
+                        orientation="v",
+                        yanchor="top",
+                        y=1,
+                        xanchor="left",
+                        x=1.01
+                    )
+                )
+                
                 print("ok")
-                plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Papers by conference and continent (percentages)")                
+                st.plotly_chart(fig, use_container_width=True)
         
         if 'source_year' in df_pandas.columns:
             with tab3:               
@@ -394,23 +437,30 @@ class StreamlitPaperAnalytics:
                 num_conferences = len(conferences)
                 
                 # Calculate subplot grid dimensions
-                cols = min(2, num_conferences)  # Max 3 columns
-                rows = (num_conferences + cols - 1) // cols  # Ceiling division
+                cols = min(2, num_conferences)
+                rows = (num_conferences + cols - 1) // cols
+                
+                # Create subplot titles
+                subplot_titles = [f'Paper trends - {conf}' for conf in conferences]
                 
                 # Create subplots
-                fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
+                fig = make_subplots(
+                    rows=rows, 
+                    cols=cols,
+                    subplot_titles=subplot_titles,
+                    vertical_spacing=0.08,
+                    horizontal_spacing=0.1
+                )
                 
-                # Handle case where there's only one subplot
-                if num_conferences == 1:
-                    axes = [axes]
-                elif rows == 1:
-                    axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
-                else:
-                    axes = axes.flatten()
+                # Get all unique continents for consistent coloring
+                all_continents = df_pandas['source_predominant_continent'].unique()
+                colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
+                continent_colors = {continent: colors[i % len(colors)] for i, continent in enumerate(all_continents)}
                 
                 # Plot each conference
                 for i, conference in enumerate(conferences):
-                    ax = axes[i]
+                    row = i // cols + 1
+                    col = i % cols + 1
                     
                     # Filter data for this conference
                     conference_data = df_pandas[df_pandas['source_conference'] == conference]
@@ -419,22 +469,46 @@ class StreamlitPaperAnalytics:
                     # Plot each continent for this conference
                     for continent in yearly_data['source_predominant_continent'].unique():
                         continent_data = yearly_data[yearly_data['source_predominant_continent'] == continent]
-                        ax.plot(continent_data['source_year'], continent_data['paper_count'],
-                            marker='o', linewidth=2, markersize=6, label=continent)
-                    
-                    ax.set_xlabel('Year')
-                    ax.set_ylabel('Number of papers')
-                    ax.set_title(f'Paper trends - {conference}')
-                    ax.legend()
-                    ax.grid(True, alpha=0.3)
-                    ax.tick_params(axis='x', rotation=45)
+                        
+                        fig.add_trace(
+                            go.Scatter(
+                                x=continent_data['source_year'],
+                                y=continent_data['paper_count'],
+                                mode='lines+markers',
+                                name=continent,
+                                line=dict(width=2, color=continent_colors[continent]),
+                                marker=dict(size=6, color=continent_colors[continent]),
+                                legendgroup=continent,
+                                showlegend=(i == 0),
+                            ),
+                            row=row, col=col
+                        )
                 
-                # Hide empty subplots if any
-                for i in range(num_conferences, len(axes)):
-                    axes[i].set_visible(False)
+                # Update layout
+                fig.update_layout(
+                    height=600 * rows,
+                    title_text="Paper trends over time",
+                    title_x=0.5,
+                    showlegend=True
+                )
                 
-                plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Paper trends over time")          
+                # Update axes
+                fig.update_xaxes(
+                    title_text="Year",
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.3)',
+                    tickangle=45
+                )
+                
+                fig.update_yaxes(
+                    title_text="Number of papers",
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.3)'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
                 
             with tab4:               
                 # Get unique conferences
@@ -456,23 +530,30 @@ class StreamlitPaperAnalytics:
                 print(df_pandas_percentage)                
                 
                 # Calculate subplot grid dimensions
-                cols = min(2, num_conferences)  # Max 3 columns
-                rows = (num_conferences + cols - 1) // cols  # Ceiling division
+                cols = min(2, num_conferences)
+                rows = (num_conferences + cols - 1) // cols
+                
+                # Create subplot titles
+                subplot_titles = [f'Paper trends - {conf}' for conf in conferences]
                 
                 # Create subplots
-                fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
+                fig = make_subplots(
+                    rows=rows, 
+                    cols=cols,
+                    subplot_titles=subplot_titles,
+                    vertical_spacing=0.08,
+                    horizontal_spacing=0.1
+                )
                 
-                # Handle case where there's only one subplot
-                if num_conferences == 1:
-                    axes = [axes]
-                elif rows == 1:
-                    axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
-                else:
-                    axes = axes.flatten()
+                # Get all unique continents for consistent coloring
+                all_continents = df_pandas_percentage['source_predominant_continent'].unique()
+                colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
+                continent_colors = {continent: colors[i % len(colors)] for i, continent in enumerate(all_continents)}
                 
                 # Plot each conference
                 for i, conference in enumerate(conferences):
-                    ax = axes[i]
+                    row = i // cols + 1
+                    col = i % cols + 1
                     
                     # Filter data for this conference
                     conference_data = df_pandas_percentage[df_pandas_percentage['source_conference'] == conference]
@@ -481,22 +562,46 @@ class StreamlitPaperAnalytics:
                     # Plot each continent for this conference
                     for continent in yearly_data['source_predominant_continent'].unique():
                         continent_data = yearly_data[yearly_data['source_predominant_continent'] == continent]
-                        ax.plot(continent_data['source_year'], continent_data['paper_percentage'],
-                            marker='o', linewidth=2, markersize=6, label=continent)
-                    
-                    ax.set_xlabel('Year')
-                    ax.set_ylabel('Number of papers')
-                    ax.set_title(f'Paper trends - {conference}')
-                    ax.legend()
-                    ax.grid(True, alpha=0.3)
-                    ax.tick_params(axis='x', rotation=45)
+                        
+                        fig.add_trace(
+                            go.Scatter(
+                                x=continent_data['source_year'],
+                                y=continent_data['paper_percentage'],
+                                mode='lines+markers',
+                                name=continent,
+                                line=dict(width=2, color=continent_colors[continent]),
+                                marker=dict(size=6, color=continent_colors[continent]),
+                                legendgroup=continent,
+                                showlegend=(i == 0),
+                            ),
+                            row=row, col=col
+                        )
                 
-                # Hide empty subplots if any
-                for i in range(num_conferences, len(axes)):
-                    axes[i].set_visible(False)
+                # Update layout
+                fig.update_layout(
+                    height=600 * rows,
+                    title_text="Paper trends over time (percentages)",
+                    title_x=0.5,
+                    showlegend=True
+                )
                 
-                plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Paper trends over time (percentages)")                           
+                # Update axes
+                fig.update_xaxes(
+                    title_text="Year",
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.3)',
+                    tickangle=45
+                )
+                
+                fig.update_yaxes(
+                    title_text="Percentage of papers (%)",
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.3)'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
         
         with tab5:
             if 'source_conference' in df_pandas.columns:
@@ -504,77 +609,118 @@ class StreamlitPaperAnalytics:
                 
                 # Calculate number of rows and columns for subplots
                 n_conferences = len(conferences)
-                n_cols = min(3, n_conferences)  # Max 3 columns
-                n_rows = (n_conferences + n_cols - 1) // n_cols  # Ceiling division
+                n_cols = min(3, n_conferences)
+                n_rows = (n_conferences + n_cols - 1) // n_cols
                 
-                fig, axes = plt.subplots(n_rows, n_cols, figsize=(7*n_cols, 6*n_rows))
+                # Create subplot titles
+                subplot_titles = []
+                for conference in conferences:
+                    conf_data = df_pandas[df_pandas['source_conference'] == conference]
+                    total_papers = conf_data['paper_count'].sum()
+                    subplot_titles.append(f'{conference}<br>({total_papers} papers)')
                 
-                # Handle case where there's only one subplot
-                if n_conferences == 1:
-                    axes = [axes]
-                elif n_rows == 1 and n_cols > 1:
-                    axes = axes.flatten()
-                elif n_rows > 1:
-                    axes = axes.flatten()
+                # Create subplots with pie chart specs
+                fig = make_subplots(
+                    rows=n_rows, 
+                    cols=n_cols,
+                    subplot_titles=subplot_titles,
+                    specs=[[{"type": "pie"}] * n_cols for _ in range(n_rows)],
+                    vertical_spacing=0.1,
+                    horizontal_spacing=0.05
+                )
                 
-                colors = plt.cm.Set3(np.linspace(0, 1, 10))
+                # Define colors (equivalent to plt.cm.Set3)
+                colors = [
+                    '#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3',
+                    '#fdb462', '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd'
+                ]
                 
+                # Plot each conference
                 for i, conference in enumerate(conferences):
+                    row = i // n_cols + 1
+                    col = i % n_cols + 1
+                    
                     # Filter data for this conference
                     conf_data = df_pandas[df_pandas['source_conference'] == conference]
                     continent_totals = conf_data.groupby('source_predominant_continent')['paper_count'].sum()
                     
                     if len(continent_totals) > 0:
-                        # Calculate percentages for legend
+                        # Calculate percentages
                         total = continent_totals.sum()
                         percentages = [(value/total)*100 for value in continent_totals.values]
+                        
+                        # Create custom legend labels with percentages
+                        legend_labels = [f'{continent}: {percent:.1f}%' 
+                                        for continent, percent in zip(continent_totals.index, percentages)]
                         
                         # Select colors for this conference's continents
                         conf_colors = colors[:len(continent_totals)]
                         
-                        # Create pie chart without percentage labels
-                        wedges, texts = axes[i].pie(
-                            continent_totals.values, 
-                            labels=None,  # No labels on the pie
-                            colors=conf_colors, 
-                            startangle=90,
-                            pctdistance=0.85,  
-                            labeldistance=1.1,                             
+                        fig.add_trace(
+                            go.Pie(
+                                labels=legend_labels,
+                                values=continent_totals.values,
+                                name=conference,
+                                marker=dict(colors=conf_colors),
+                                hovertemplate='%{label}<br>%{value} papers<br>%{percent}<extra></extra>',
+                                textinfo='none',
+                                showlegend=True,
+                                legendgroup=f'group{i}',
+                                domain=dict(row=row-1, column=col-1)
+                            ),
+                            row=row, col=col
+                        )
+                    else:
+                        # For conferences with no data, add empty pie with annotation
+                        fig.add_trace(
+                            go.Pie(
+                                labels=['No data'],
+                                values=[1],
+                                marker=dict(colors=['lightgray']),
+                                showlegend=False,
+                                textinfo='none',
+                                hoverinfo='skip'
+                            ),
+                            row=row, col=col
                         )
                         
-                        axes[i].set_title(f'{conference}\n({continent_totals.sum()} papers)', 
-                                        fontsize=11, fontweight='bold')
-                        
-                        # Create legend with percentages
-                        legend_labels = [f'{continent}: {percent:.1f}%' 
-                                       for continent, percent in zip(continent_totals.index, percentages)]
-                        
-                        axes[i].legend(wedges, legend_labels, 
-                                     title="Continents", 
-                                     loc="center left", 
-                                     bbox_to_anchor=(1, 0, 0.5, 1),
-                                     fontsize=10)
-                        
-                    else:
-                        axes[i].text(0.5, 0.5, f'{conference}\nNo data', 
-                                   ha='center', va='center', transform=axes[i].transAxes,
-                                   fontsize=12, fontweight='bold')
-                        axes[i].set_xlim(0, 1)
-                        axes[i].set_ylim(0, 1)
+                        # Add annotation for "No data"
+                        fig.add_annotation(
+                            text="No data",
+                            x=0.5, y=0.5,
+                            xref=f"x{i+1 if i > 0 else ''}", 
+                            yref=f"y{i+1 if i > 0 else ''}",
+                            showarrow=False,
+                            font=dict(size=12, color="black"),
+                            align="center"
+                        )
                 
-                # Hide unused subplots
-                for i in range(n_conferences, len(axes)):
-                    axes[i].set_visible(False)
+                # Update layout
+                fig.update_layout(
+                    title=dict(
+                        text='Distribution of papers by continent per conference',
+                        x=0.5,
+                        font=dict(size=16, color="black")
+                    ),
+                    height=600 * n_rows,
+                    showlegend=True,
+                    legend=dict(
+                        orientation="v",
+                        yanchor="middle",
+                        y=0.5,
+                        xanchor="left",
+                        x=1.02,
+                        font=dict(size=10)
+                    ),
+                    margin=dict(r=200)
+                )
                 
-                plt.suptitle('Distribution of papers by continent per conference', 
-                           fontsize=16, fontweight='bold', y=0.98)
-                plt.tight_layout()
-                plt.subplots_adjust(top=0.93, right=0.85)  # Make room for legends
+                st.plotly_chart(fig, use_container_width=True)
                 
-                self.create_matplotlib_chart(fig, "Papers distribution by conference and continent")    
-        
+
+
     def create_citation_visualizations(self, df: pl.DataFrame):
-        """Create matplotlib visualizations for paper data"""
+        """Create plotly visualizations for paper data"""
         if df.height == 0:
             return
             
@@ -583,49 +729,68 @@ class StreamlitPaperAnalytics:
         # Create tabs for different visualizations
         if 'source_year' in df_pandas.columns:
             tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Bar Chart (totals)", "📊 Bar Chart (percentages)", "📈 Line Chart (totals)", "📈 Line Chart (percentages)", "🥧 Pie Chart"])
-        
         else:
             tab1, tab5 = st.tabs(["📊 Bar Chart", "🥧 Pie Chart"])
                 
         with tab1:
             print(df_pandas.columns)
             if 'source_conference' in df_pandas.columns:
-                fig, ax = plt.subplots(figsize=(14, 8))
-                
                 grouped_data = df_pandas.groupby(['source_conference', 'cited_predominant_continent'])['paper_count'].sum().reset_index()
                 
                 # Create grouped bar chart
                 conferences = grouped_data['source_conference'].unique()
                 continents = grouped_data['cited_predominant_continent'].unique()
                 
-                x = np.arange(len(conferences))
-                width = 0.8 / len(continents)
+                fig = go.Figure()
                 
-                for i, continent in enumerate(continents):
+                # Add bars for each continent
+                for continent in continents:
                     continent_data = grouped_data[grouped_data['cited_predominant_continent'] == continent]
                     values = [continent_data[continent_data['source_conference'] == conf]['paper_count'].sum() 
-                             if conf in continent_data['source_conference'].values else 0 
-                             for conf in conferences]
+                            if conf in continent_data['source_conference'].values else 0 
+                            for conf in conferences]
                     
-                    ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
+                    fig.add_trace(go.Bar(
+                        name=continent,
+                        x=conferences,
+                        y=values,
+                        opacity=0.8
+                    ))
                 
-                ax.set_xlabel('Conference')
-                ax.set_ylabel('Number of citations')
-                ax.set_title('Citations by conference and continent')
-                ax.set_xticks(x + width * (len(continents) - 1) / 2)
-                ax.set_xticklabels(conferences, rotation=45)
-                ax.legend()
-                ax.grid(True, alpha=0.3)
+                # Update layout
+                fig.update_layout(
+                    title='Citations by conference and continent',
+                    xaxis_title='Conference',
+                    yaxis_title='Number of citations',
+                    barmode='group',
+                    width=1000,
+                    height=571,
+                    xaxis=dict(
+                        tickangle=45,
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    ),
+                    yaxis=dict(
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    ),
+                    legend=dict(
+                        orientation="v",
+                        yanchor="top",
+                        y=1,
+                        xanchor="left",
+                        x=1.01
+                    )
+                )
                 
-                plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Citations by conference and continent (totals)")
+                st.plotly_chart(fig, use_container_width=True)
         
         if 'source_year' in df_pandas.columns:
             with tab2:
                 print(df_pandas.columns)
                 if 'source_conference' in df_pandas.columns:
-                    fig, ax = plt.subplots(figsize=(14, 8))
-                    
                     df_pandas_percentage = (
                         df
                         .group_by("source_conference", "cited_predominant_continent")
@@ -643,35 +808,58 @@ class StreamlitPaperAnalytics:
                         .sort(['source_conference', 'cited_predominant_continent'])                    
                     ).to_pandas()
                     print(df_pandas_percentage)
-                    grouped_data = df_pandas_percentage#                
                     
-                    # grouped_data = df_pandas.groupby(['source_conference', 'cited_predominant_continent'])['paper_count'].sum().reset_index()
+                    grouped_data = df_pandas_percentage
                     
                     # Create grouped bar chart
                     conferences = grouped_data['source_conference'].unique()
                     continents = grouped_data['cited_predominant_continent'].unique()
                     
-                    x = np.arange(len(conferences))
-                    width = 0.8 / len(continents)
+                    fig = go.Figure()
                     
-                    for i, continent in enumerate(continents):
+                    # Add bars for each continent
+                    for continent in continents:
                         continent_data = grouped_data[grouped_data['cited_predominant_continent'] == continent]
                         values = [continent_data[continent_data['source_conference'] == conf]['paper_percentage'].sum() 
                                 if conf in continent_data['source_conference'].values else 0 
                                 for conf in conferences]
                         
-                        ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
+                        fig.add_trace(go.Bar(
+                            name=continent,
+                            x=conferences,
+                            y=values,
+                            opacity=0.8
+                        ))
                     
-                    ax.set_xlabel('Conference')
-                    ax.set_ylabel('Number of citations')
-                    ax.set_title('Citations by conference and continent')
-                    ax.set_xticks(x + width * (len(continents) - 1) / 2)
-                    ax.set_xticklabels(conferences, rotation=45)
-                    ax.legend()
-                    ax.grid(True, alpha=0.3)
+                    # Update layout
+                    fig.update_layout(
+                        title='Citations by conference and continent (percentages)',
+                        xaxis_title='Conference',
+                        yaxis_title='Percentage of citations (%)',
+                        barmode='group',
+                        width=1000,
+                        height=571,
+                        xaxis=dict(
+                            tickangle=45,
+                            showgrid=True,
+                            gridwidth=1,
+                            gridcolor='rgba(128, 128, 128, 0.3)'
+                        ),
+                        yaxis=dict(
+                            showgrid=True,
+                            gridwidth=1,
+                            gridcolor='rgba(128, 128, 128, 0.3)'
+                        ),
+                        legend=dict(
+                            orientation="v",
+                            yanchor="top",
+                            y=1,
+                            xanchor="left",
+                            x=1.01
+                        )
+                    )
                     
-                    plt.tight_layout()
-                    self.create_matplotlib_chart(fig, "Citations by conference and continent (percentages)")                
+                    st.plotly_chart(fig, use_container_width=True)
         
         if 'source_year' in df_pandas.columns:
             with tab3:                
@@ -680,23 +868,30 @@ class StreamlitPaperAnalytics:
                 num_conferences = len(conferences)
                 
                 # Calculate subplot grid dimensions
-                cols = min(2, num_conferences)  # Max 3 columns
-                rows = (num_conferences + cols - 1) // cols  # Ceiling division
+                cols = min(2, num_conferences)
+                rows = (num_conferences + cols - 1) // cols
+                
+                # Create subplot titles
+                subplot_titles = [f'Citation trends - {conf}' for conf in conferences]
                 
                 # Create subplots
-                fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
+                fig = make_subplots(
+                    rows=rows, 
+                    cols=cols,
+                    subplot_titles=subplot_titles,
+                    vertical_spacing=0.08,
+                    horizontal_spacing=0.1
+                )
                 
-                # Handle case where there's only one subplot
-                if num_conferences == 1:
-                    axes = [axes]
-                elif rows == 1:
-                    axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
-                else:
-                    axes = axes.flatten()
+                # Get all unique continents for consistent coloring
+                all_continents = df_pandas['cited_predominant_continent'].unique()
+                colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
+                continent_colors = {continent: colors[i % len(colors)] for i, continent in enumerate(all_continents)}
                 
                 # Plot each conference
                 for i, conference in enumerate(conferences):
-                    ax = axes[i]
+                    row = i // cols + 1
+                    col = i % cols + 1
                     
                     # Filter data for this conference
                     conference_data = df_pandas[df_pandas['source_conference'] == conference]
@@ -705,22 +900,47 @@ class StreamlitPaperAnalytics:
                     # Plot each continent for this conference
                     for continent in yearly_data['cited_predominant_continent'].unique():
                         continent_data = yearly_data[yearly_data['cited_predominant_continent'] == continent]
-                        ax.plot(continent_data['source_year'], continent_data['paper_count'],
-                            marker='o', linewidth=2, markersize=6, label=continent)
-                    
-                    ax.set_xlabel('Year')
-                    ax.set_ylabel('Number of citations')
-                    ax.set_title(f'Citation trends - {conference}')
-                    ax.legend()
-                    ax.grid(True, alpha=0.3)
-                    ax.tick_params(axis='x', rotation=45)
+                        
+                        fig.add_trace(
+                            go.Scatter(
+                                x=continent_data['source_year'],
+                                y=continent_data['paper_count'],
+                                mode='lines+markers',
+                                name=continent,
+                                line=dict(width=2, color=continent_colors[continent]),
+                                marker=dict(size=6, color=continent_colors[continent]),
+                                legendgroup=continent,
+                                showlegend=(i == 0),
+                            ),
+                            row=row, col=col
+                        )
                 
-                # Hide empty subplots if any
-                for i in range(num_conferences, len(axes)):
-                    axes[i].set_visible(False)
+                # Update layout
+                fig.update_layout(
+                    height=600 * rows,
+                    width=1000,
+                    title_text="Citation trends over time (totals)",
+                    title_x=0.5,
+                    showlegend=True
+                )
                 
-                plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Citation trends over time (totals)")           
+                # Update axes
+                fig.update_xaxes(
+                    title_text="Year",
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.3)',
+                    tickangle=45
+                )
+                
+                fig.update_yaxes(
+                    title_text="Number of citations",
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.3)'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
                 
         if 'source_year' in df_pandas.columns:
             with tab4:                
@@ -743,23 +963,30 @@ class StreamlitPaperAnalytics:
                 print(df_pandas_percentage)                    
                 
                 # Calculate subplot grid dimensions
-                cols = min(2, num_conferences)  # Max 3 columns
-                rows = (num_conferences + cols - 1) // cols  # Ceiling division
+                cols = min(2, num_conferences)
+                rows = (num_conferences + cols - 1) // cols
+                
+                # Create subplot titles
+                subplot_titles = [f'Citation trends - {conf}' for conf in conferences]
                 
                 # Create subplots
-                fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
+                fig = make_subplots(
+                    rows=rows, 
+                    cols=cols,
+                    subplot_titles=subplot_titles,
+                    vertical_spacing=0.08,
+                    horizontal_spacing=0.1
+                )
                 
-                # Handle case where there's only one subplot
-                if num_conferences == 1:
-                    axes = [axes]
-                elif rows == 1:
-                    axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
-                else:
-                    axes = axes.flatten()
+                # Get all unique continents for consistent coloring
+                all_continents = df_pandas_percentage['cited_predominant_continent'].unique()
+                colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
+                continent_colors = {continent: colors[i % len(colors)] for i, continent in enumerate(all_continents)}
                 
                 # Plot each conference
                 for i, conference in enumerate(conferences):
-                    ax = axes[i]
+                    row = i // cols + 1
+                    col = i % cols + 1
                     
                     # Filter data for this conference
                     conference_data = df_pandas_percentage[df_pandas_percentage['source_conference'] == conference]
@@ -768,22 +995,47 @@ class StreamlitPaperAnalytics:
                     # Plot each continent for this conference
                     for continent in yearly_data['cited_predominant_continent'].unique():
                         continent_data = yearly_data[yearly_data['cited_predominant_continent'] == continent]
-                        ax.plot(continent_data['source_year'], continent_data['paper_percentage'],
-                            marker='o', linewidth=2, markersize=6, label=continent)
-                    
-                    ax.set_xlabel('Year')
-                    ax.set_ylabel('Number of citations')
-                    ax.set_title(f'Citation trends - {conference}')
-                    ax.legend()
-                    ax.grid(True, alpha=0.3)
-                    ax.tick_params(axis='x', rotation=45)
+                        
+                        fig.add_trace(
+                            go.Scatter(
+                                x=continent_data['source_year'],
+                                y=continent_data['paper_percentage'],
+                                mode='lines+markers',
+                                name=continent,
+                                line=dict(width=2, color=continent_colors[continent]),
+                                marker=dict(size=6, color=continent_colors[continent]),
+                                legendgroup=continent,
+                                showlegend=(i == 0),
+                            ),
+                            row=row, col=col
+                        )
                 
-                # Hide empty subplots if any
-                for i in range(num_conferences, len(axes)):
-                    axes[i].set_visible(False)
+                # Update layout
+                fig.update_layout(
+                    height=600 * rows,
+                    width=1000,
+                    title_text="Citation trends over time (percentages)",
+                    title_x=0.5,
+                    showlegend=True
+                )
                 
-                plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Citation trends over time (percentages)")                        
+                # Update axes
+                fig.update_xaxes(
+                    title_text="Year",
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.3)',
+                    tickangle=45
+                )
+                
+                fig.update_yaxes(
+                    title_text="Percentage of citations (%)",
+                    showgrid=True,
+                    gridwidth=1,
+                    gridcolor='rgba(128, 128, 128, 0.3)'
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
         
         with tab5:
             if 'source_conference' in df_pandas.columns:
@@ -791,74 +1043,401 @@ class StreamlitPaperAnalytics:
                 
                 # Calculate number of rows and columns for subplots
                 n_conferences = len(conferences)
-                n_cols = min(3, n_conferences)  # Max 3 columns
-                n_rows = (n_conferences + n_cols - 1) // n_cols  # Ceiling division
+                n_cols = min(3, n_conferences)
+                n_rows = (n_conferences + n_cols - 1) // n_cols
                 
-                fig, axes = plt.subplots(n_rows, n_cols, figsize=(7*n_cols, 6*n_rows))
+                # Create subplot titles
+                subplot_titles = []
+                for conference in conferences:
+                    conf_data = df_pandas[df_pandas['source_conference'] == conference]
+                    total_papers = conf_data['paper_count'].sum()
+                    subplot_titles.append(f'{conference}<br>({total_papers} papers)')
                 
-                # Handle case where there's only one subplot
-                if n_conferences == 1:
-                    axes = [axes]
-                elif n_rows == 1 and n_cols > 1:
-                    axes = axes.flatten()
-                elif n_rows > 1:
-                    axes = axes.flatten()
+                # Create subplots with pie chart specs
+                fig = make_subplots(
+                    rows=n_rows, 
+                    cols=n_cols,
+                    subplot_titles=subplot_titles,
+                    specs=[[{"type": "pie"}] * n_cols for _ in range(n_rows)],
+                    vertical_spacing=0.1,
+                    horizontal_spacing=0.05
+                )
                 
-                colors = plt.cm.Set3(np.linspace(0, 1, 10))
+                # Define colors (equivalent to plt.cm.Set3)
+                colors = [
+                    '#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3',
+                    '#fdb462', '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd'
+                ]
                 
+                # Plot each conference
                 for i, conference in enumerate(conferences):
+                    row = i // n_cols + 1
+                    col = i % n_cols + 1
+                    
                     # Filter data for this conference
                     conf_data = df_pandas[df_pandas['source_conference'] == conference]
                     continent_totals = conf_data.groupby('cited_predominant_continent')['paper_count'].sum()
                     
                     if len(continent_totals) > 0:
-                        # Calculate percentages for legend
+                        # Calculate percentages
                         total = continent_totals.sum()
                         percentages = [(value/total)*100 for value in continent_totals.values]
+                        
+                        # Create custom legend labels with percentages
+                        legend_labels = [f'{continent}: {percent:.1f}%' 
+                                        for continent, percent in zip(continent_totals.index, percentages)]
                         
                         # Select colors for this conference's continents
                         conf_colors = colors[:len(continent_totals)]
                         
-                        # Create pie chart without percentage labels
-                        wedges, texts = axes[i].pie(
-                            continent_totals.values, 
-                            labels=None,  # No labels on the pie
-                            colors=conf_colors, 
-                            startangle=90,
-                            pctdistance=0.85,  
-                            labeldistance=1.1,                             
+                        fig.add_trace(
+                            go.Pie(
+                                labels=legend_labels,
+                                values=continent_totals.values,
+                                name=conference,
+                                marker=dict(colors=conf_colors),
+                                hovertemplate='%{label}<br>%{value} papers<br>%{percent}<extra></extra>',
+                                textinfo='none',
+                                showlegend=True,
+                                legendgroup=f'group{i}',
+                                domain=dict(row=row-1, column=col-1)
+                            ),
+                            row=row, col=col
+                        )
+                    else:
+                        # For conferences with no data, add empty pie with annotation
+                        fig.add_trace(
+                            go.Pie(
+                                labels=['No data'],
+                                values=[1],
+                                marker=dict(colors=['lightgray']),
+                                showlegend=False,
+                                textinfo='none',
+                                hoverinfo='skip'
+                            ),
+                            row=row, col=col
                         )
                         
-                        axes[i].set_title(f'{conference}\n({continent_totals.sum()} papers)', 
-                                        fontsize=11, fontweight='bold')
-                        
-                        # Create legend with percentages
-                        legend_labels = [f'{continent}: {percent:.1f}%' 
-                                       for continent, percent in zip(continent_totals.index, percentages)]
-                        
-                        axes[i].legend(wedges, legend_labels, 
-                                     title="Continents", 
-                                     loc="center left", 
-                                     bbox_to_anchor=(1, 0, 0.5, 1),
-                                     fontsize=10)
-                        
-                    else:
-                        axes[i].text(0.5, 0.5, f'{conference}\nNo data', 
-                                   ha='center', va='center', transform=axes[i].transAxes,
-                                   fontsize=12, fontweight='bold')
-                        axes[i].set_xlim(0, 1)
-                        axes[i].set_ylim(0, 1)
+                        # Add annotation for "No data"
+                        fig.add_annotation(
+                            text="No data",
+                            x=0.5, y=0.5,
+                            xref=f"x{i+1 if i > 0 else ''}", 
+                            yref=f"y{i+1 if i > 0 else ''}",
+                            showarrow=False,
+                            font=dict(size=12, color="black"),
+                            align="center"
+                        )
                 
-                # Hide unused subplots
-                for i in range(n_conferences, len(axes)):
-                    axes[i].set_visible(False)
+                # Update layout
+                fig.update_layout(
+                    title=dict(
+                        text='Distribution of citations by continent per conference',
+                        x=0.5,
+                        font=dict(size=16, color="black")
+                    ),
+                    height=600 * n_rows,
+                    width=700 * n_cols,
+                    showlegend=True,
+                    legend=dict(
+                        orientation="v",
+                        yanchor="middle",
+                        y=0.5,
+                        xanchor="left",
+                        x=1.02,
+                        font=dict(size=10)
+                    ),
+                    margin=dict(r=200)
+                )
                 
-                plt.suptitle('Distribution of citations by continent per conference', 
-                           fontsize=16, fontweight='bold', y=0.98)
-                plt.tight_layout()
-                plt.subplots_adjust(top=0.93, right=0.85)  # Make room for legends
+                st.plotly_chart(fig, use_container_width=True)            
+        
+    # def create_citation_visualizations(self, df: pl.DataFrame):
+    #     """Create matplotlib visualizations for paper data"""
+    #     if df.height == 0:
+    #         return
+            
+    #     df_pandas = df.to_pandas()
+        
+    #     # Create tabs for different visualizations
+    #     if 'source_year' in df_pandas.columns:
+    #         tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Bar Chart (totals)", "📊 Bar Chart (percentages)", "📈 Line Chart (totals)", "📈 Line Chart (percentages)", "🥧 Pie Chart"])
+        
+    #     else:
+    #         tab1, tab5 = st.tabs(["📊 Bar Chart", "🥧 Pie Chart"])
                 
-                self.create_matplotlib_chart(fig, "Citation distribution by conference and continent")    
+    #     with tab1:
+    #         print(df_pandas.columns)
+    #         if 'source_conference' in df_pandas.columns:
+    #             fig, ax = plt.subplots(figsize=(14, 8))
+                
+    #             grouped_data = df_pandas.groupby(['source_conference', 'cited_predominant_continent'])['paper_count'].sum().reset_index()
+                
+    #             # Create grouped bar chart
+    #             conferences = grouped_data['source_conference'].unique()
+    #             continents = grouped_data['cited_predominant_continent'].unique()
+                
+    #             x = np.arange(len(conferences))
+    #             width = 0.8 / len(continents)
+                
+    #             for i, continent in enumerate(continents):
+    #                 continent_data = grouped_data[grouped_data['cited_predominant_continent'] == continent]
+    #                 values = [continent_data[continent_data['source_conference'] == conf]['paper_count'].sum() 
+    #                          if conf in continent_data['source_conference'].values else 0 
+    #                          for conf in conferences]
+                    
+    #                 ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
+                
+    #             ax.set_xlabel('Conference')
+    #             ax.set_ylabel('Number of citations')
+    #             ax.set_title('Citations by conference and continent')
+    #             ax.set_xticks(x + width * (len(continents) - 1) / 2)
+    #             ax.set_xticklabels(conferences, rotation=45)
+    #             ax.legend()
+    #             ax.grid(True, alpha=0.3)
+                
+    #             plt.tight_layout()
+    #             self.create_matplotlib_chart(fig, "Citations by conference and continent (totals)")
+        
+    #     if 'source_year' in df_pandas.columns:
+    #         with tab2:
+    #             print(df_pandas.columns)
+    #             if 'source_conference' in df_pandas.columns:
+    #                 fig, ax = plt.subplots(figsize=(14, 8))
+                    
+    #                 df_pandas_percentage = (
+    #                     df
+    #                     .group_by("source_conference", "cited_predominant_continent")
+    #                     .agg([
+    #                         pl.sum("paper_count")
+    #                     ])                    
+    #                     .with_columns([
+    #                         (
+    #                             pl.col('paper_count') / 
+    #                             pl.col('paper_count').sum().over(['source_conference']) * 100
+    #                         )
+    #                         .round(2)
+    #                         .alias('paper_percentage')
+    #                     ])
+    #                     .sort(['source_conference', 'cited_predominant_continent'])                    
+    #                 ).to_pandas()
+    #                 print(df_pandas_percentage)
+    #                 grouped_data = df_pandas_percentage#                
+                    
+    #                 # grouped_data = df_pandas.groupby(['source_conference', 'cited_predominant_continent'])['paper_count'].sum().reset_index()
+                    
+    #                 # Create grouped bar chart
+    #                 conferences = grouped_data['source_conference'].unique()
+    #                 continents = grouped_data['cited_predominant_continent'].unique()
+                    
+    #                 x = np.arange(len(conferences))
+    #                 width = 0.8 / len(continents)
+                    
+    #                 for i, continent in enumerate(continents):
+    #                     continent_data = grouped_data[grouped_data['cited_predominant_continent'] == continent]
+    #                     values = [continent_data[continent_data['source_conference'] == conf]['paper_percentage'].sum() 
+    #                             if conf in continent_data['source_conference'].values else 0 
+    #                             for conf in conferences]
+                        
+    #                     ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
+                    
+    #                 ax.set_xlabel('Conference')
+    #                 ax.set_ylabel('Number of citations')
+    #                 ax.set_title('Citations by conference and continent')
+    #                 ax.set_xticks(x + width * (len(continents) - 1) / 2)
+    #                 ax.set_xticklabels(conferences, rotation=45)
+    #                 ax.legend()
+    #                 ax.grid(True, alpha=0.3)
+                    
+    #                 plt.tight_layout()
+    #                 self.create_matplotlib_chart(fig, "Citations by conference and continent (percentages)")                
+        
+    #     if 'source_year' in df_pandas.columns:
+    #         with tab3:                
+    #             # Get unique conferences
+    #             conferences = df_pandas['source_conference'].unique()
+    #             num_conferences = len(conferences)
+                
+    #             # Calculate subplot grid dimensions
+    #             cols = min(2, num_conferences)  # Max 3 columns
+    #             rows = (num_conferences + cols - 1) // cols  # Ceiling division
+                
+    #             # Create subplots
+    #             fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
+                
+    #             # Handle case where there's only one subplot
+    #             if num_conferences == 1:
+    #                 axes = [axes]
+    #             elif rows == 1:
+    #                 axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
+    #             else:
+    #                 axes = axes.flatten()
+                
+    #             # Plot each conference
+    #             for i, conference in enumerate(conferences):
+    #                 ax = axes[i]
+                    
+    #                 # Filter data for this conference
+    #                 conference_data = df_pandas[df_pandas['source_conference'] == conference]
+    #                 yearly_data = conference_data.groupby(['source_year', 'cited_predominant_continent'])['paper_count'].sum().reset_index()
+                    
+    #                 # Plot each continent for this conference
+    #                 for continent in yearly_data['cited_predominant_continent'].unique():
+    #                     continent_data = yearly_data[yearly_data['cited_predominant_continent'] == continent]
+    #                     ax.plot(continent_data['source_year'], continent_data['paper_count'],
+    #                         marker='o', linewidth=2, markersize=6, label=continent)
+                    
+    #                 ax.set_xlabel('Year')
+    #                 ax.set_ylabel('Number of citations')
+    #                 ax.set_title(f'Citation trends - {conference}')
+    #                 ax.legend()
+    #                 ax.grid(True, alpha=0.3)
+    #                 ax.tick_params(axis='x', rotation=45)
+                
+    #             # Hide empty subplots if any
+    #             for i in range(num_conferences, len(axes)):
+    #                 axes[i].set_visible(False)
+                
+    #             plt.tight_layout()
+    #             self.create_matplotlib_chart(fig, "Citation trends over time (totals)")           
+                
+    #     if 'source_year' in df_pandas.columns:
+    #         with tab4:                
+    #             # Get unique conferences
+    #             conferences = df_pandas['source_conference'].unique()
+    #             num_conferences = len(conferences)
+                
+    #             df_pandas_percentage = (
+    #                 df                  
+    #                 .with_columns([
+    #                     (
+    #                         pl.col('paper_count') / 
+    #                         pl.col('paper_count').sum().over(['source_conference', 'source_year']) * 100
+    #                     )
+    #                     .round(2)
+    #                     .alias('paper_percentage')
+    #                 ])
+    #                 .sort(['source_conference', 'cited_predominant_continent'])                    
+    #             ).to_pandas()
+    #             print(df_pandas_percentage)                    
+                
+    #             # Calculate subplot grid dimensions
+    #             cols = min(2, num_conferences)  # Max 3 columns
+    #             rows = (num_conferences + cols - 1) // cols  # Ceiling division
+                
+    #             # Create subplots
+    #             fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
+                
+    #             # Handle case where there's only one subplot
+    #             if num_conferences == 1:
+    #                 axes = [axes]
+    #             elif rows == 1:
+    #                 axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
+    #             else:
+    #                 axes = axes.flatten()
+                
+    #             # Plot each conference
+    #             for i, conference in enumerate(conferences):
+    #                 ax = axes[i]
+                    
+    #                 # Filter data for this conference
+    #                 conference_data = df_pandas_percentage[df_pandas_percentage['source_conference'] == conference]
+    #                 yearly_data = conference_data.groupby(['source_year', 'cited_predominant_continent'])['paper_percentage'].sum().reset_index()
+                    
+    #                 # Plot each continent for this conference
+    #                 for continent in yearly_data['cited_predominant_continent'].unique():
+    #                     continent_data = yearly_data[yearly_data['cited_predominant_continent'] == continent]
+    #                     ax.plot(continent_data['source_year'], continent_data['paper_percentage'],
+    #                         marker='o', linewidth=2, markersize=6, label=continent)
+                    
+    #                 ax.set_xlabel('Year')
+    #                 ax.set_ylabel('Number of citations')
+    #                 ax.set_title(f'Citation trends - {conference}')
+    #                 ax.legend()
+    #                 ax.grid(True, alpha=0.3)
+    #                 ax.tick_params(axis='x', rotation=45)
+                
+    #             # Hide empty subplots if any
+    #             for i in range(num_conferences, len(axes)):
+    #                 axes[i].set_visible(False)
+                
+    #             plt.tight_layout()
+    #             self.create_matplotlib_chart(fig, "Citation trends over time (percentages)")                        
+        
+    #     with tab5:
+    #         if 'source_conference' in df_pandas.columns:
+    #             conferences = df_pandas['source_conference'].unique()
+                
+    #             # Calculate number of rows and columns for subplots
+    #             n_conferences = len(conferences)
+    #             n_cols = min(3, n_conferences)  # Max 3 columns
+    #             n_rows = (n_conferences + n_cols - 1) // n_cols  # Ceiling division
+                
+    #             fig, axes = plt.subplots(n_rows, n_cols, figsize=(7*n_cols, 6*n_rows))
+                
+    #             # Handle case where there's only one subplot
+    #             if n_conferences == 1:
+    #                 axes = [axes]
+    #             elif n_rows == 1 and n_cols > 1:
+    #                 axes = axes.flatten()
+    #             elif n_rows > 1:
+    #                 axes = axes.flatten()
+                
+    #             colors = plt.cm.Set3(np.linspace(0, 1, 10))
+                
+    #             for i, conference in enumerate(conferences):
+    #                 # Filter data for this conference
+    #                 conf_data = df_pandas[df_pandas['source_conference'] == conference]
+    #                 continent_totals = conf_data.groupby('cited_predominant_continent')['paper_count'].sum()
+                    
+    #                 if len(continent_totals) > 0:
+    #                     # Calculate percentages for legend
+    #                     total = continent_totals.sum()
+    #                     percentages = [(value/total)*100 for value in continent_totals.values]
+                        
+    #                     # Select colors for this conference's continents
+    #                     conf_colors = colors[:len(continent_totals)]
+                        
+    #                     # Create pie chart without percentage labels
+    #                     wedges, texts = axes[i].pie(
+    #                         continent_totals.values, 
+    #                         labels=None,  # No labels on the pie
+    #                         colors=conf_colors, 
+    #                         startangle=90,
+    #                         pctdistance=0.85,  
+    #                         labeldistance=1.1,                             
+    #                     )
+                        
+    #                     axes[i].set_title(f'{conference}\n({continent_totals.sum()} papers)', 
+    #                                     fontsize=11, fontweight='bold')
+                        
+    #                     # Create legend with percentages
+    #                     legend_labels = [f'{continent}: {percent:.1f}%' 
+    #                                    for continent, percent in zip(continent_totals.index, percentages)]
+                        
+    #                     axes[i].legend(wedges, legend_labels, 
+    #                                  title="Continents", 
+    #                                  loc="center left", 
+    #                                  bbox_to_anchor=(1, 0, 0.5, 1),
+    #                                  fontsize=10)
+                        
+    #                 else:
+    #                     axes[i].text(0.5, 0.5, f'{conference}\nNo data', 
+    #                                ha='center', va='center', transform=axes[i].transAxes,
+    #                                fontsize=12, fontweight='bold')
+    #                     axes[i].set_xlim(0, 1)
+    #                     axes[i].set_ylim(0, 1)
+                
+    #             # Hide unused subplots
+    #             for i in range(n_conferences, len(axes)):
+    #                 axes[i].set_visible(False)
+                
+    #             plt.suptitle('Distribution of citations by continent per conference', 
+    #                        fontsize=16, fontweight='bold', y=0.98)
+    #             plt.tight_layout()
+    #             plt.subplots_adjust(top=0.93, right=0.85)  # Make room for legends
+                
+    #             self.create_matplotlib_chart(fig, "Citation distribution by conference and continent")    
                 
     def create_citation_by_source_and_cited_continent_visualizations(self, df: pl.DataFrame):
         """Create Sankey diagram visualizations for citation data"""
@@ -1232,39 +1811,61 @@ class StreamlitPaperAnalytics:
         
         with tab1:
             if 'conference' in df_pandas.columns:
-                fig, ax = plt.subplots(figsize=(14, 8))
                 
                 conference_data = df_pandas.groupby(['conference', 'continent'])['committee_count'].sum().reset_index()
-                
                 conferences = conference_data['conference'].unique()
                 continents = conference_data['continent'].unique()
-                
-                x = np.arange(len(conferences))
-                width = 0.8 / len(continents)
-                
-                for i, continent in enumerate(continents):
+
+                # Create the plotly figure
+                fig = go.Figure()
+
+                # Add bars for each continent
+                for continent in continents:
                     continent_data = conference_data[conference_data['continent'] == continent]
-                    values = [continent_data[continent_data['conference'] == conf]['committee_count'].sum() 
-                             if conf in continent_data['conference'].values else 0 
-                             for conf in conferences]
+                    values = [continent_data[continent_data['conference'] == conf]['committee_count'].sum()
+                            if conf in continent_data['conference'].values else 0
+                            for conf in conferences]
                     
-                    ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
-                
-                ax.set_xlabel('Conference')
-                ax.set_ylabel('Number of committee members')
-                ax.set_title('Committee members by conference and continent')
-                ax.set_xticks(x + width * (len(continents) - 1) / 2)
-                ax.set_xticklabels(conferences, rotation=45)
-                ax.legend()
-                ax.grid(True, alpha=0.3)
-                
-                plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Committee members by conference (totals)")
-        
+                    fig.add_trace(go.Bar(
+                        name=continent,
+                        x=conferences,
+                        y=values,
+                        opacity=0.8
+                    ))
+
+                # Update layout to match matplotlib styling
+                fig.update_layout(
+                    title='Committee members by conference and continent (totals)',
+                    xaxis_title='Conference',
+                    yaxis_title='Number of committee members',
+                    barmode='group',  # This creates the grouped bar effect
+                    width=1000,       # Equivalent to figsize=(14, 8)
+                    height=571,       # Approximate height for 14x8 aspect ratio
+                    xaxis=dict(
+                        tickangle=45,  # Rotate x-axis labels
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    ),
+                    yaxis=dict(
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    ),
+                    legend=dict(
+                        orientation="v",
+                        yanchor="top",
+                        y=1,
+                        xanchor="left",
+                        x=1.01
+                    )
+                )
+
+                # Display the plot in Streamlit
+                st.plotly_chart(fig, use_container_width=True)  
+                        
         with tab2:
             if 'conference' in df_pandas.columns:
-                fig, ax = plt.subplots(figsize=(14, 8))
-                
                 conference_data = (
                     df
                     .group_by("conference", "continent")
@@ -1281,61 +1882,90 @@ class StreamlitPaperAnalytics:
                     ])
                     .sort(['conference', 'continent'])                    
                 ).to_pandas()
-                # print(df_pandas_percentage)
-                # grouped_data = df_pandas_percentage                  
-                
-                # conference_data = df_pandas.groupby(['conference', 'continent'])['committee_count'].sum().reset_index()
-                
                 conferences = conference_data['conference'].unique()
                 continents = conference_data['continent'].unique()
-                
-                x = np.arange(len(conferences))
-                width = 0.8 / len(continents)
-                
-                for i, continent in enumerate(continents):
+
+                # Create the plotly figure
+                fig = go.Figure()
+
+                # Add bars for each continent
+                for continent in continents:
                     continent_data = conference_data[conference_data['continent'] == continent]
-                    values = [continent_data[continent_data['conference'] == conf]['committee_percentage'].sum() 
-                             if conf in continent_data['conference'].values else 0 
-                             for conf in conferences]
+                    values = [continent_data[continent_data['conference'] == conf]['committee_percentage'].sum()
+                            if conf in continent_data['conference'].values else 0
+                            for conf in conferences]
                     
-                    ax.bar(x + i * width, values, width, label=continent, alpha=0.8)
+                    fig.add_trace(go.Bar(
+                        name=continent,
+                        x=conferences,
+                        y=values,
+                        opacity=0.8
+                    ))
+
+                # Update layout to match matplotlib styling
+                fig.update_layout(
+                    title='Committee members by conference and continent (percentages)',
+                    xaxis_title='Conference',
+                    yaxis_title='Percentage of committee members',
+                    barmode='group',  # This creates the grouped bar effect
+                    width=1000,       # Equivalent to figsize=(14, 8)
+                    height=571,       # Approximate height for 14x8 aspect ratio
+                    xaxis=dict(
+                        tickangle=45,  # Rotate x-axis labels
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    ),
+                    yaxis=dict(
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    ),
+                    legend=dict(
+                        orientation="v",
+                        yanchor="top",
+                        y=1,
+                        xanchor="left",
+                        x=1.01
+                    )
+                )
+
+                # Display the plot in Streamlit
+                st.plotly_chart(fig, use_container_width=True)
                 
-                ax.set_xlabel('Conference')
-                ax.set_ylabel('Percentage of committee members')
-                ax.set_title('Committee members by conference and continent (percentages)')
-                ax.set_xticks(x + width * (len(continents) - 1) / 2)
-                ax.set_xticklabels(conferences, rotation=45)
-                ax.legend()
-                ax.grid(True, alpha=0.3)
-                
-                plt.tight_layout()
-                self.create_matplotlib_chart(fig, "Committee members by conference (percentages)")        
         
         if 'year' in df_pandas.columns:
             with tab3:
                 if 'conference' in df_pandas.columns and 'year' in df_pandas.columns:
-                    # Get unique conferences
+
                     conferences = df_pandas['conference'].unique()
                     num_conferences = len(conferences)
-                    
+
                     # Calculate subplot grid dimensions
-                    cols = min(2, num_conferences)  # Max 3 columns
+                    cols = min(2, num_conferences)  # Max 2 columns (matching your original)
                     rows = (num_conferences + cols - 1) // cols  # Ceiling division
-                    
+
+                    # Create subplot titles
+                    subplot_titles = [f'Committee trends - {conf}' for conf in conferences]
+
                     # Create subplots
-                    fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
-                    
-                    # Handle case where there's only one subplot
-                    if num_conferences == 1:
-                        axes = [axes]
-                    elif rows == 1:
-                        axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
-                    else:
-                        axes = axes.flatten()
-                    
+                    fig = make_subplots(
+                        rows=rows, 
+                        cols=cols,
+                        subplot_titles=subplot_titles,
+                        vertical_spacing=0.08,
+                        horizontal_spacing=0.1
+                    )
+
+                    # Get all unique continents for consistent coloring
+                    all_continents = df_pandas['continent'].unique()
+                    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
+                    continent_colors = {continent: colors[i % len(colors)] for i, continent in enumerate(all_continents)}
+
                     # Plot each conference
                     for i, conference in enumerate(conferences):
-                        ax = axes[i]
+                        row = i // cols + 1
+                        col = i % cols + 1
                         
                         # Filter data for this conference
                         conference_data = df_pandas[df_pandas['conference'] == conference]
@@ -1344,28 +1974,51 @@ class StreamlitPaperAnalytics:
                         # Plot each continent for this conference
                         for continent in yearly_data['continent'].unique():
                             continent_data = yearly_data[yearly_data['continent'] == continent]
-                            ax.plot(continent_data['year'], continent_data['committee_count'],
-                                marker='o', linewidth=2, markersize=6, label=continent)
-                        
-                        ax.set_xlabel('Year')
-                        ax.set_ylabel('Number of committee members')
-                        ax.set_title(f'Committee trends - {conference}')
-                        ax.legend()
-                        ax.grid(True, alpha=0.3)
-                        ax.tick_params(axis='x', rotation=45)
+                            
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=continent_data['year'],
+                                    y=continent_data['committee_count'],
+                                    mode='lines+markers',
+                                    name=continent,
+                                    line=dict(width=2, color=continent_colors[continent]),
+                                    marker=dict(size=6, color=continent_colors[continent]),
+                                    legendgroup=continent,  # Group legend entries by continent
+                                    showlegend=(i == 0),    # Only show legend for first subplot
+                                ),
+                                row=row, col=col
+                            )
+
+                    # Update layout
+                    fig.update_layout(
+                        height=600 * rows,  # Equivalent to figsize height of 6 * rows
+                        width=1000,         # Equivalent to figsize width of 14
+                        title_text="Committee trends by conference (totals)",
+                        title_x=0.5,        # Center the title
+                        showlegend=True
+                    )
+
+                    # Update x and y axes for all subplots
+                    fig.update_xaxes(
+                        title_text="Year",
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)',
+                        tickangle=45
+                    )
+
+                    fig.update_yaxes(
+                        title_text="Number of committee members",
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    )
                     
-                    # Hide empty subplots if any
-                    for i in range(num_conferences, len(axes)):
-                        axes[i].set_visible(False)
-                    
-                    plt.tight_layout()
-                    self.create_matplotlib_chart(fig, "Committee trends by conference")
+                    # Display the plot in Streamlit
+                    st.plotly_chart(fig, use_container_width=True)      
                     
             with tab4:
-                if 'conference' in df_pandas.columns and 'year' in df_pandas.columns:
-                    # Get unique conferences
-                    conferences = df_pandas['conference'].unique()
-                    num_conferences = len(conferences)
+                if 'conference' in df_pandas.columns and 'year' in df_pandas.columns:                 
                     
                     df_pandas_percentages = (
                         df      
@@ -1378,26 +2031,35 @@ class StreamlitPaperAnalytics:
                             .alias('committee_percentage')
                         ])
                         .sort(['conference', 'continent', 'year'])                    
-                    ).to_pandas()                    
-                    
+                    ).to_pandas()                                    
+                    conferences = df_pandas['conference'].unique()
+                    num_conferences = len(conferences)
+
                     # Calculate subplot grid dimensions
-                    cols = min(2, num_conferences)  # Max 3 columns
+                    cols = min(2, num_conferences)  # Max 2 columns (matching your original)
                     rows = (num_conferences + cols - 1) // cols  # Ceiling division
-                    
+
+                    # Create subplot titles
+                    subplot_titles = [f'Committee trends - {conf}' for conf in conferences]
+
                     # Create subplots
-                    fig, axes = plt.subplots(rows, cols, figsize=(14, 6 * rows))
-                    
-                    # Handle case where there's only one subplot
-                    if num_conferences == 1:
-                        axes = [axes]
-                    elif rows == 1:
-                        axes = axes if isinstance(axes, (list, np.ndarray)) else [axes]
-                    else:
-                        axes = axes.flatten()
-                    
+                    fig = make_subplots(
+                        rows=rows, 
+                        cols=cols,
+                        subplot_titles=subplot_titles,
+                        vertical_spacing=0.08,
+                        horizontal_spacing=0.1
+                    )
+
+                    # Get all unique continents for consistent coloring
+                    all_continents = df_pandas_percentages['continent'].unique()
+                    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2']
+                    continent_colors = {continent: colors[i % len(colors)] for i, continent in enumerate(all_continents)}
+
                     # Plot each conference
                     for i, conference in enumerate(conferences):
-                        ax = axes[i]
+                        row = i // cols + 1
+                        col = i % cols + 1
                         
                         # Filter data for this conference
                         conference_data = df_pandas_percentages[df_pandas_percentages['conference'] == conference]
@@ -1406,97 +2068,173 @@ class StreamlitPaperAnalytics:
                         # Plot each continent for this conference
                         for continent in yearly_data['continent'].unique():
                             continent_data = yearly_data[yearly_data['continent'] == continent]
-                            ax.plot(continent_data['year'], continent_data['committee_percentage'],
-                                marker='o', linewidth=2, markersize=6, label=continent)
-                        
-                        ax.set_xlabel('Year')
-                        ax.set_ylabel('Percentage of committee members')
-                        ax.set_title(f'Committee trends - {conference} (percentages)')
-                        ax.legend()
-                        ax.grid(True, alpha=0.3)
-                        ax.tick_params(axis='x', rotation=45)
+                            
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=continent_data['year'],
+                                    y=continent_data['committee_percentage'],
+                                    mode='lines+markers',
+                                    name=continent,
+                                    line=dict(width=2, color=continent_colors[continent]),
+                                    marker=dict(size=6, color=continent_colors[continent]),
+                                    legendgroup=continent,  # Group legend entries by continent
+                                    showlegend=(i == 0),    # Only show legend for first subplot
+                                ),
+                                row=row, col=col
+                            )
+
+                    # Update layout
+                    fig.update_layout(
+                        height=600 * rows,  # Equivalent to figsize height of 6 * rows
+                        width=1000,         # Equivalent to figsize width of 14
+                        title_text="Committee trends by conference (percentages)",
+                        title_x=0.5,        # Center the title
+                        showlegend=True
+                    )
+
+                    # Update x and y axes for all subplots
+                    fig.update_xaxes(
+                        title_text="Year",
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)',
+                        tickangle=45
+                    )
+
+                    fig.update_yaxes(
+                        title_text="Percentage of committee members",
+                        showgrid=True,
+                        gridwidth=1,
+                        gridcolor='rgba(128, 128, 128, 0.3)'
+                    )
                     
-                    # Hide empty subplots if any
-                    for i in range(num_conferences, len(axes)):
-                        axes[i].set_visible(False)
+                    # Display the plot in Streamlit
+                    st.plotly_chart(fig, use_container_width=True)                         
                     
-                    plt.tight_layout()
-                    self.create_matplotlib_chart(fig, "Committee trends by conference (percentages)")                    
+                            
                     
         with tab5:
             if 'conference' in df_pandas.columns:
-                conferences = df_pandas['conference'].unique()
                 
+                # self.create_matplotlib_chart(fig, "Committee distribution by conference and continent")    
+                conferences = df_pandas['conference'].unique()
+
                 # Calculate number of rows and columns for subplots
                 n_conferences = len(conferences)
                 n_cols = min(3, n_conferences)  # Max 3 columns
                 n_rows = (n_conferences + n_cols - 1) // n_cols  # Ceiling division
-                
-                fig, axes = plt.subplots(n_rows, n_cols, figsize=(7*n_cols, 6*n_rows))
-                
-                # Handle case where there's only one subplot
-                if n_conferences == 1:
-                    axes = [axes]
-                elif n_rows == 1 and n_cols > 1:
-                    axes = axes.flatten()
-                elif n_rows > 1:
-                    axes = axes.flatten()
-                
-                colors = plt.cm.Set3(np.linspace(0, 1, 10))
-                
+
+                # Create subplot titles
+                subplot_titles = []
+                for conference in conferences:
+                    conf_data = df_pandas[df_pandas['conference'] == conference]
+                    total_committees = conf_data['committee_count'].sum()
+                    subplot_titles.append(f'{conference}<br>({total_committees} committees)')
+
+                # Create subplots with pie chart specs
+                fig = make_subplots(
+                    rows=n_rows, 
+                    cols=n_cols,
+                    subplot_titles=subplot_titles,
+                    specs=[[{"type": "pie"}] * n_cols for _ in range(n_rows)],
+                    vertical_spacing=0.1,
+                    horizontal_spacing=0.05
+                )
+
+                # Define colors (equivalent to plt.cm.Set3)
+                colors = [
+                    '#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3',
+                    '#fdb462', '#b3de69', '#fccde5', '#d9d9d9', '#bc80bd'
+                ]
+
+                # Plot each conference
                 for i, conference in enumerate(conferences):
+                    row = i // n_cols + 1
+                    col = i % n_cols + 1
+                    
                     # Filter data for this conference
                     conf_data = df_pandas[df_pandas['conference'] == conference]
                     continent_totals = conf_data.groupby('continent')['committee_count'].sum()
                     
                     if len(continent_totals) > 0:
-                        # Calculate percentages for legend
+                        # Calculate percentages
                         total = continent_totals.sum()
                         percentages = [(value/total)*100 for value in continent_totals.values]
+                        
+                        # Create custom hover text with percentages
+                        hover_text = [f'{continent}<br>{value} committees<br>{percent:.1f}%' 
+                                    for continent, value, percent in 
+                                    zip(continent_totals.index, continent_totals.values, percentages)]
+                        
+                        # Create custom legend labels with percentages
+                        legend_labels = [f'{continent}: {percent:.1f}%' 
+                                        for continent, percent in zip(continent_totals.index, percentages)]
                         
                         # Select colors for this conference's continents
                         conf_colors = colors[:len(continent_totals)]
                         
-                        # Create pie chart without percentage labels
-                        wedges, texts = axes[i].pie(
-                            continent_totals.values, 
-                            labels=None,  # No labels on the pie
-                            colors=conf_colors, 
-                            startangle=90,
-                            pctdistance=0.85,  
-                            labeldistance=1.1,                             
+                        fig.add_trace(
+                            go.Pie(
+                                labels=legend_labels,  # Use percentage labels
+                                values=continent_totals.values,
+                                name=conference,
+                                marker=dict(colors=conf_colors),
+                                hovertemplate='%{label}<br>%{value} committees<br>%{percent}<extra></extra>',
+                                textinfo='none',  # Don't show text on pie slices
+                                showlegend=True,
+                                legendgroup=f'group{i}',  # Separate legend for each pie
+                                domain=dict(row=row-1, column=col-1)  # Position the pie
+                            ),
+                            row=row, col=col
+                        )
+                    else:
+                        # For conferences with no data, add empty pie with annotation
+                        fig.add_trace(
+                            go.Pie(
+                                labels=['No data'],
+                                values=[1],
+                                marker=dict(colors=['lightgray']),
+                                showlegend=False,
+                                textinfo='none',
+                                hoverinfo='skip'
+                            ),
+                            row=row, col=col
                         )
                         
-                        axes[i].set_title(f'{conference}\n({continent_totals.sum()} committees)', 
-                                        fontsize=11, fontweight='bold')
-                        
-                        # Create legend with percentages
-                        legend_labels = [f'{continent}: {percent:.1f}%' 
-                                       for continent, percent in zip(continent_totals.index, percentages)]
-                        
-                        axes[i].legend(wedges, legend_labels, 
-                                     title="Continents", 
-                                     loc="center left", 
-                                     bbox_to_anchor=(1, 0, 0.5, 1),
-                                     fontsize=10)
-                        
-                    else:
-                        axes[i].text(0.5, 0.5, f'{conference}\nNo data', 
-                                   ha='center', va='center', transform=axes[i].transAxes,
-                                   fontsize=12, fontweight='bold')
-                        axes[i].set_xlim(0, 1)
-                        axes[i].set_ylim(0, 1)
+                        # Add annotation for "No data"
+                        fig.add_annotation(
+                            text="No data",
+                            x=0.5, y=0.5,
+                            xref=f"x{i+1 if i > 0 else ''}", 
+                            yref=f"y{i+1 if i > 0 else ''}",
+                            showarrow=False,
+                            font=dict(size=12, color="black"),
+                            align="center"
+                        )
+
+                # Update layout
+                fig.update_layout(
+                    title=dict(
+                        text='Distribution of committee members by continent',
+                        x=0.5,
+                        font=dict(size=16, color="black")
+                    ),
+                    height=600 * n_rows,  # Equivalent to 6 * n_rows
+                    width=700 * n_cols,   # Equivalent to 7 * n_cols
+                    showlegend=True,
+                    legend=dict(
+                        orientation="v",
+                        yanchor="middle",
+                        y=0.5,
+                        xanchor="left",
+                        x=1.02,
+                        font=dict(size=10)
+                    ),
+                    margin=dict(r=200)  # Make room for legend
+                )           
                 
-                # Hide unused subplots
-                for i in range(n_conferences, len(axes)):
-                    axes[i].set_visible(False)
-                
-                plt.suptitle('Distribution of committee members by continent', 
-                           fontsize=16, fontweight='bold', y=0.98)
-                plt.tight_layout()
-                plt.subplots_adjust(top=0.93, right=0.85)  # Make room for legends
-                
-                self.create_matplotlib_chart(fig, "Committee distribution by conference and continent")    
+                # Display the plot in Streamlit
+                st.plotly_chart(fig, use_container_width=True)  
     
     def create_committee_country_visualizations(self, df: pl.DataFrame):
         """Create matplotlib visualizations for committee country data"""
