@@ -335,8 +335,24 @@ class MultiModalPaperQuery():
             expr=expr,
         )
         
+        # schema = {
+        #     "Title": pl.String,
+        #     "TLDR": pl.String,
+        #     "Authors": pl.Struct,
+        #     "Institutions": pl.Array,
+        #     "Countries": pl.Array,
+        #     "Abstract": pl.String,
+        #     "KeyConcepts": pl.String,
+        #     "Year": pl.String,
+        #     "Conference": pl.String,
+        #     "Summary": pl.String            
+        # }
+        
         # Create dataframe from results
-        df_result = pl.DataFrame([result["entity"] for result in results])
+        df_result = pl.DataFrame(
+            [result["entity"] for result in results],
+            infer_schema_length=1000
+        )
         
         return df_result
         

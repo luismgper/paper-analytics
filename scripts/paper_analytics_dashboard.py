@@ -5,7 +5,10 @@ import pandas as pd
 import polars as pl
 import numpy as np
 import io
+import ollama
 from matplotlib import patheffects
+import json
+from typing import Optional
 
 # Your specific imports and initialization
 import src.papers.domain.multimodal_paper_query as mpq
@@ -22,6 +25,12 @@ torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__
 
 class StreamlitPaperAnalytics:
     """Streamlit interface for Paper Analytics using matplotlib"""
+    PROMPTS = {
+        "paper": """containing counts of papers published,categorized by continent, conference, and year.""",
+        "citation": "containing counts of paper citations from papers published in conferences,categorized by continent, conference, and year.",
+        "paper_and_citation": "containing counts of papers published in conferences and their citations,categorized by continent, conference, and year.",
+        "committee": "containing counts of committee members of conferences,categorized by continent, conference, and year.",
+    }
     
     def __init__(self):
         self.setup_page_config()
@@ -154,9 +163,9 @@ class StreamlitPaperAnalytics:
         # Define which filters are needed for each analysis type
         filter_requirements = {
             "Papers by Conference, Continent and Year": ["text","conferences", "years", "continents"],
-            "Papers by Conference and Continent": ["text", "conferences", "continents"],
+            # "Papers by Conference and Continent": ["text", "conferences", "continents"],
             "Citations by Conference, Continent and Year": ["text","conferences", "years", "continents", "cited_continents"],
-            "Citations by Conference and Continent": ["text", "conferences", "continents", "cited_continents"],            
+            # "Citations by Conference and Continent": ["text", "conferences", "continents", "cited_continents"],            
             "Citations by Conference and Source and Cited Continent": ["text", "conferences", "continents", "cited_continents"],            
             "Committees by Conference, Country and Year": ["conferences", "years"],
             "Committees by Continent and Year": ["conferences", "continents", "years"],
@@ -203,7 +212,7 @@ class StreamlitPaperAnalytics:
         if "years" in required_filters:
             years = st.sidebar.multiselect(
                 "Select years",
-                options=[str(year) for year in range(2012, 2023)],
+                options=[str(year) for year in range(2012, 2024)],
                 key="selected_years",
                 help="Filter by specific years"
             )
@@ -235,6 +244,8 @@ class StreamlitPaperAnalytics:
         else:
             filters['cited_continents'] = None            
         
+        ai_analysis = st.sidebar.checkbox("Use AI to explain results")
+        
         # Show a summary of active filters
         active_filters = [k for k, v in filters.items() if v is not None and len(v) > 0]
         if active_filters:
@@ -242,7 +253,7 @@ class StreamlitPaperAnalytics:
         else:
             st.sidebar.info("ℹ️ No filters applied (showing all data)")
         
-        return filters
+        return filters, ai_analysis
     
     def display_dataframe_with_download(self, df: pl.DataFrame, title: str, key: str):
         """Display DataFrame with download option"""
@@ -293,10 +304,13 @@ class StreamlitPaperAnalytics:
         )
         plt.close(fig)
 
-    def create_paper_visualizations(self, df: pl.DataFrame):
+    def create_paper_visualizations(self, df: pl.DataFrame, do_ai_analysis: bool):
         """Create plotly visualizations for paper data"""
         if df.height == 0:
             return
+        
+        if do_ai_analysis:
+            self.print_llm_analysis(df, "paper")        
             
         df_pandas = df.to_pandas()
         
@@ -742,10 +756,13 @@ class StreamlitPaperAnalytics:
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-    def create_citation_visualizations(self, df: pl.DataFrame):
+    def create_citation_visualizations(self, df: pl.DataFrame, do_ai_analysis: bool):
         """Create plotly visualizations for paper data"""
         if df.height == 0:
             return
+
+        if do_ai_analysis:
+            self.print_llm_analysis(df, "citation")    
             
         df_pandas = df.to_pandas()
         
@@ -1190,10 +1207,13 @@ class StreamlitPaperAnalytics:
                 
                 st.plotly_chart(fig, use_container_width=True)            
                         
-    def create_citation_by_source_and_cited_continent_visualizations(self, df: pl.DataFrame):
+    def create_citation_by_source_and_cited_continent_visualizations(self, df: pl.DataFrame, do_ai_analysis: bool):
         """Create Sankey diagram visualizations for citation data"""
         if df.height == 0:
             return
+        
+        if do_ai_analysis:
+            self.print_llm_analysis(df, "paper_and_citation")        
             
         df_pandas = df.to_pandas()
         
@@ -1547,10 +1567,13 @@ class StreamlitPaperAnalytics:
             else:
                 st.error("Required columns not found in dataframe. Expected: 'source_conference', 'source_predominant_continent', 'cited_predominant_continent', 'paper_count'")                
     
-    def create_committee_visualizations(self, df: pl.DataFrame):
+    def create_committee_visualizations(self, df: pl.DataFrame, do_ai_analysis: bool):
         """Create matplotlib visualizations for committee data"""
         if df.height == 0:
             return
+                    
+        if do_ai_analysis:
+            self.print_llm_analysis(df, "committee")                        
                     
         df_pandas = df.to_pandas()
         
@@ -2001,10 +2024,13 @@ class StreamlitPaperAnalytics:
                 # Display the plot in Streamlit
                 st.plotly_chart(fig, use_container_width=True)
     
-    def create_committee_country_visualizations(self, df: pl.DataFrame):
+    def create_committee_country_visualizations(self, df: pl.DataFrame, do_ai_analysis: bool):
         """Create matplotlib visualizations for committee country data"""
         if df.height == 0:
             return
+        
+        if do_ai_analysis:
+            self.print_llm_analysis(df, "committee")                
             
         df_pandas = df.to_pandas()
         
@@ -2099,6 +2125,302 @@ class StreamlitPaperAnalytics:
                 
                 self.create_matplotlib_chart(fig, "Committee Trends Over Time by Country")
 
+    def _call_ollama(self, model_name: str, system_prompt: str, user_content: str) -> str | None:
+        """Make a call to Ollama with error handling"""
+        try:
+            response = ollama.chat(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                options={"temperature": 0},
+                keep_alive='30m'
+            )
+            return response.message.content
+        except Exception as e:
+            return f"Error calling Ollama: {str(e)}"
+        
+    def _format_dataframe_to_markdown(self, df: pl.DataFrame):
+        """Convert DataFrame to markdown with proper formatting"""
+        with pl.Config(
+            tbl_formatting="MARKDOWN",
+            tbl_hide_column_data_types=True,
+            tbl_hide_dataframe_shape=True,
+            tbl_rows=-1,
+            tbl_cols=-1,
+            fmt_str_lengths=999999,
+            tbl_width_chars=100,
+        ):
+            return str(df.head(9999))
+        
+    def _phase1_individual_analysis(self, df: pl.DataFrame, prompt_case: str) -> dict:
+        """
+        Phase 1: Analyze each conference individually
+        
+        Args:
+            df: Polars DataFrame with conference data
+            
+        Returns:
+            Dictionary with conference names as keys and analysis results as values
+        """
+        SYSTEM_PROMPT = f"""
+        You are a data analysis assistant specialized in research publication trends.
+        You will receive structured tabular or Markdown data {self.PROMPTS[prompt_case]}
+
+        ## GOAL ##
+        1. Carefully interpret the data—analyze totals, proportions, changes over time, and differences between categories.
+        2. Identify clear trends (growth, decline, stability), notable peaks or drops, and distribution patterns.
+        3. Communicate findings in two parts:
+        - **Concise bullet points** for quick insights.
+        - **Brief narrative summary** to explain the patterns.
+
+        ## RULES ##
+        - If data spans multiple years, highlight temporal trends.
+        - Do not fabricate data—base all insights solely on the provided dataset.
+        - Keep tone analytical but accessible to non-specialists.
+        - Always output **all sections in the exact order of the template** below.
+        - Even if a section has no findings, explicitly state "No significant findings" for that section.
+
+        ## OUTPUT TEMPLATE (MANDATORY) ##
+        1. Trends
+        2. Peaks and drops
+        3. Continental distribution
+        4. Unknown and other continents
+
+        ## IMPORTANT ##
+        - You must strictly adhere to the output structure above.
+        - Don't mention numbers.
+        - No extra sections, no omissions, no reordering.
+        
+        ## CRITICAL NUMBER HANDLING ##
+        - Always write complete 4-digit years (e.g., 2023, not 202)
+        - Double-check all numbers before finalizing your response
+        - If you see a year like "202", it should be "2023" or similar        
+        """
+
+        results = {}
+        
+        print("=== PHASE 1: Individual Conference Analysis ===\n")
+        
+        conference_column = "conference" if prompt_case == "committee" else "source_conference" 
+        for conf, group_df in df.group_by(conference_column):
+            if prompt_case == 'paper':
+                pivot_df = group_df.pivot(values="paper_count", index="source_year", on="source_predominant_continent", aggregate_function="sum").with_columns(
+                    pl.sum_horizontal(pl.exclude("source_year")).alias("Total")
+                )
+            elif prompt_case == 'citation':
+                pivot_df = group_df.pivot(values="paper_count", index="source_year", on="cited_predominant_continent", aggregate_function="sum").with_columns(
+                    pl.sum_horizontal(pl.exclude("source_year")).alias("Total")
+                )                
+            elif prompt_case == 'paper_and_citation':
+                pivot_df = group_df
+            else:
+                pivot_df = group_df.pivot(values="committee_count", index="year", on="continent", aggregate_function="sum").with_columns(
+                    pl.sum_horizontal(pl.exclude("year")).alias("Total")
+                )                     
+
+            print(f"--- Analyzing {conf} ---")
+
+            data_str = self._format_dataframe_to_markdown(pivot_df)
+            print(data_str)
+            user_content = f"Conference: {conf}\nMarkdown table:\n{data_str}"
+            response = self._call_ollama("gemma3:4b-it-q4_K_M",SYSTEM_PROMPT, user_content)
+            results[conf] = str(response)
+        
+        return results
+    
+    def _phase2_comparative_analysis(self, individual_results: Optional[dict[str, str]] = None) -> str:
+        """
+        Phase 2: Compare all conferences and provide aggregated insights
+        
+        Args:
+            individual_results: Optional dict of individual results. If None, uses stored results.
+            
+        Returns:
+            Comparative analysis string
+        """
+        SYSTEM_PROMPT = """
+        You are a data analysis assistant specialized in comparative research publication analysis.
+        You will receive analysis results from multiple conferences that have already been individually analyzed.
+
+        ## GOAL ##
+        1. Compare and contrast findings across all conferences.
+        2. Identify cross-conference patterns, similarities, and differences.
+        3. Provide aggregated insights about the overall research landscape.
+        4. Highlight which conferences show similar or different behaviors.
+
+        ## RULES ##
+        - Focus on comparative insights rather than repeating individual conference details.
+        - Identify overarching patterns that emerge when looking at all conferences together.
+        - Note which conferences are outliers or follow different patterns.
+        - Keep tone analytical but accessible to non-specialists.
+        - Always output **all sections in the exact order of the template** below.
+        - Even if a section has no findings, explicitly state "No significant findings" for that section.
+
+        ## OUTPUT TEMPLATE (MANDATORY) ##
+        1. Trends
+        2. Peaks and drops
+        3. Continental distribution
+        4. Unknown and other continents
+
+        ## IMPORTANT ##
+        - You must strictly adhere to the output structure above.
+        - No extra sections, no omissions, no reordering.
+        - Focus on COMPARATIVE and AGGREGATED insights across all conferences.
+        
+        ## CRITICAL NUMBER HANDLING ##
+        - Always write complete 4-digit years (e.g., 2023 and 2015, not 202 and 201)
+        - Double-check all numbers before finalizing your response
+        - If you see a year like "202", it should be "2023" or similar        
+        """
+        
+        # if individual_results is None:
+        #     individual_results = self.conference_results
+        
+        if not individual_results:
+            return "No individual results available for comparison."
+        
+        print("=== PHASE 2: Pairwise Comparative Analysis ===\n")
+        
+        # Convert to list for easier pairwise processing
+        results_list = list(individual_results.items())
+        
+        if len(results_list) == 1:
+            print("Only one conference found. Returning individual result.")
+            return list(individual_results.values())[0]
+        
+        round_number = 1
+        
+        # Continue until we have only one result left
+        while len(results_list) > 1:
+            print(f"--- Round {round_number} of Pairwise Comparisons ---")
+            new_results = []
+            
+            # Process pairs
+            for i in range(0, len(results_list), 2):
+                if i + 1 < len(results_list):
+                    # We have a pair
+                    conf1, analysis1 = results_list[i]
+                    conf2, analysis2 = results_list[i + 1]
+                    
+                    print(f"Comparing: {conf1} vs {conf2}")
+                    
+                    # Create pairwise comparison content
+                    pair_content = f"""Compare these two conference analyses and provide aggregated insights:
+
+                        ## Conference {conf1}:
+                        {analysis1}
+
+                        ---
+
+                        ## Conference {conf2}:
+                        {analysis2}
+
+                        Please provide a comparative analysis that consolidates insights from both conferences."""
+                    
+                    # Get pairwise comparison
+                    pair_result = self._call_ollama("gemma3:4b-it-q4_K_M", SYSTEM_PROMPT, pair_content)
+                    
+                    # Create a name for this comparison result
+                    combined_name = f"{conf1}_vs_{conf2}"
+                    new_results.append((combined_name, pair_result))
+                
+                else:
+                    # Odd one out - carry forward to next round
+                    new_results.append(results_list[i])
+                    print(f"Carrying forward: {results_list[i][0]} (no pair in this round)")
+            
+            results_list = new_results
+            round_number += 1
+            print(f"Round {round_number - 1} complete. {len(results_list)} results remaining.\n")
+        
+        # Final result
+        final_name, final_result = results_list[0]
+        
+        print("=== FINAL COMPARATIVE ANALYSIS ===")
+        print(f"Final analysis combines all conferences through pairwise comparisons")
+        return final_result
+        
+    def print_llm_analysis(self, df: pl.DataFrame, prompt_case: str):
+        SYSTEM_PROMPT = """
+        You are a data analysis assistant specialized in research publication trends.
+        You will receive structured tabular or Markdown data containing counts of papers published,
+        categorized by continent, conference, and year.
+
+        ## GOAL ##
+        1. Carefully interpret the data—analyze totals, proportions, changes over time, and differences between categories.
+        2. Identify clear trends (growth, decline, stability), notable peaks or drops, and distribution patterns.
+        3. Communicate findings in two parts:
+        - **Concise bullet points** for quick insights.
+        - **Brief narrative summary** to explain the patterns.
+
+        ## RULES ##
+        - If data spans multiple years, highlight temporal trends.
+        - Do not fabricate data—base all insights solely on the provided dataset.
+        - Keep tone analytical but accessible to non-specialists.
+        - Always output **all sections in the exact order of the template** below.
+        - Even if a section has no findings, explicitly state "No significant findings" for that section.
+
+        ## OUTPUT TEMPLATE (MANDATORY) ##
+        1. Trends
+        2. Peaks and drops
+        3. Continental distribution
+        4. Unknown and other continents
+
+        ## IMPORTANT ##
+        - You must strictly adhere to the output structure above.
+        - No extra sections, no omissions, no reordering.
+        
+        ## CRITICAL NUMBER HANDLING ##
+        - Always write complete 4-digit years (e.g., 2022 and 2015, not 202 and 201)
+        - Double-check all numbers before finalizing your response
+        - If you see a year like "202" or "201", it should be "2021" or "2015" or similar             
+        """
+        # SYSTEM_PROMPT = """
+        # You are a data analysis assistant specialized in research publication trends.
+        # You will receive structured tabular or HTML data containing counts of papers published,
+        # categorized by continent, conference, and year.
+
+        # Your role is to:
+        # 1. Interpret the data carefully—look at totals, proportions, changes over time, and differences between categories.
+        # 2. Identify trends (growth, decline, stability), notable peaks or drops, and patterns in the distribution.
+        # 3. Compare categories (e.g., which continent leads in certain years, which conferences have steady or explosive growth, which copnference has more papers of each continent).
+        # 4. Communicate clearly—provide concise bullet points for quick insight, followed by a short narrative summary.
+        # Rules:
+        # - If data covers multiple years, highlight temporal trends.
+        # - If a category is missing or has incomplete data, note it explicitly.
+        # - Do not invent data—only use what is provided.
+        # - Keep the tone analytical yet accessible.
+        # """
+        
+        individual_results = self._phase1_individual_analysis(df=df, prompt_case=prompt_case)
+        final_result = self._phase2_comparative_analysis(individual_results)
+        if hasattr(st, 'markdown'):
+            st.markdown(final_result)
+        else:
+            print(final_result)
+        
+        # data_str = ""
+        # for conf, group_df in df.group_by("source_conference"):
+        #     print(f"--- {conf} ---")
+        #     data_str = self._format_dataframe_to_markdown(group_df)
+        #     print(data_str)
+
+        #     response = self._call_ollama(model_name="gemma3:4b", system_prompt=SYSTEM_PROMPT, user_content=f"Markdown table:\n{data_str}")
+        #     st.markdown(response)
+
+        
+        # data_str = json.dumps(df.to_dicts(), indent=2)
+        # response = ollama.chat(
+        #     model="mistral",
+        #     messages=[
+        #         {"role": "system", "content": SYSTEM_PROMPT},
+        #         {"role": "user", "content": f"Here is the dataset:\n{data_str}\n\nAnalyze it and provide insights. /no_think"}
+        #     ]
+        # )        
+        # st.markdown(response.message.content)
+
     # Calculate legend positions for each subplot
     def get_legend_position(self, row, col, n_rows, n_cols):
         # Calculate the center position of each subplot
@@ -2129,11 +2451,11 @@ class StreamlitPaperAnalytics:
             "Select Analysis Type",
             [
                 "Papers by Conference, Continent and Year",
-                "Papers by Conference and Continent",
+                # "Papers by Conference and Continent",
                 "Citations by Conference, Continent and Year",
-                "Citations by Conference and Continent",                
+                # "Citations by Conference and Continent",                
                 "Citations by Conference and Source and Cited Continent",                
-                "Committees by Conference, Country and Year", 
+                # "Committees by Conference, Country and Year", 
                 "Committees by Continent and Year",
                 "Committees by Continent"
             ],
@@ -2143,11 +2465,11 @@ class StreamlitPaperAnalytics:
         # Show description of selected analysis
         analysis_descriptions = {
             "Papers by Conference, Continent and Year": "Analyze paper counts across conferences, continents and years",
-            "Papers by Conference and Continent": "Compare paper distribution by conference and continent",
+            # "Papers by Conference and Continent": "Compare paper distribution by conference and continent",
             "Citations by Conference, Continent and Year": "Analyze citation counts across conferences, continents and years",
-            "Citations by Conference and Continent": "Compare citation distribution by conference and continent",            
+            # "Citations by Conference and Continent": "Compare citation distribution by conference and continent",            
             "Citations by Conference and Source and Cited Continent": "Compare citation distribution by conference and source and cited continent",            
-            "Committees by Conference, Country and Year": "Track committee member distribution by conference, country, and year",
+            # "Committees by Conference, Country and Year": "Track committee member distribution by conference, country, and year",
             "Committees by Continent and Year": "Analyze committee member trends across continents over time",
             "Committees by Continent": "Overview of committee member distribution by continent"            
         }
@@ -2156,7 +2478,7 @@ class StreamlitPaperAnalytics:
             st.info(analysis_descriptions[analysis_type])
         
         # Get filters based on selected analysis type
-        filters = self.render_filters_sidebar(analysis_type)
+        filters, do_ai_analysis = self.render_filters_sidebar(analysis_type)
         
         if st.button("🚀 Run Analysis", type="primary"):
             try:
@@ -2169,7 +2491,7 @@ class StreamlitPaperAnalytics:
                             continents=filters['continents']
                         )
                         self.display_dataframe_with_download(result, "Papers by Conference, Continent and Year", "papers_conf_cont_year")
-                        self.create_paper_visualizations(result)
+                        self.create_paper_visualizations(result, do_ai_analysis)
                         
                     elif analysis_type == "Papers by Conference and Continent":
                         result = st.session_state.analytics_client.query_paper_count_per_conference_and_continent(
@@ -2178,7 +2500,7 @@ class StreamlitPaperAnalytics:
                             continents=filters['continents']
                         )
                         self.display_dataframe_with_download(result, "Papers by Conference and Continent", "papers_conf_cont")
-                        self.create_paper_visualizations(result)
+                        self.create_paper_visualizations(result, do_ai_analysis)
                         
                     if analysis_type == "Citations by Conference, Continent and Year":
                         result = st.session_state.analytics_client.query_citation_count_per_conference_continent_and_year(
@@ -2189,7 +2511,7 @@ class StreamlitPaperAnalytics:
                             cited_continents=filters['cited_continents'],
                         )
                         self.display_dataframe_with_download(result, "Papers by Conference, Continent and Year", "papers_conf_cont_year")
-                        self.create_citation_visualizations(result)
+                        self.create_citation_visualizations(result, do_ai_analysis)
                         
                     elif analysis_type == "Citations by Conference and Continent":
                         result = st.session_state.analytics_client.query_citation_count_per_conference_and_continent(
@@ -2199,7 +2521,7 @@ class StreamlitPaperAnalytics:
                             cited_continents=filters['cited_continents'],
                         )
                         self.display_dataframe_with_download(result, "Papers by Conference and Continent", "papers_conf_cont")
-                        self.create_citation_visualizations(result)                        
+                        self.create_citation_visualizations(result, do_ai_analysis)                        
                         
                     elif analysis_type == "Citations by Conference and Source and Cited Continent":
                         result = st.session_state.analytics_client.query_citation_count_per_conference_source_continent_and_year(
@@ -2209,7 +2531,7 @@ class StreamlitPaperAnalytics:
                             cited_continents=filters['cited_continents'],
                         )
                         self.display_dataframe_with_download(result, "Papers by Conference and Continent", "papers_conf_cont")
-                        self.create_citation_by_source_and_cited_continent_visualizations(result)                        
+                        self.create_citation_by_source_and_cited_continent_visualizations(result, do_ai_analysis)                        
                                                 
                         
                     elif analysis_type == "Committees by Conference, Country and Year":
@@ -2218,7 +2540,7 @@ class StreamlitPaperAnalytics:
                             years=filters['years']
                         )
                         self.display_dataframe_with_download(result, "Committees by Conference, Country and Year", "committees_conf_country_year")
-                        self.create_committee_country_visualizations(result)
+                        self.create_committee_country_visualizations(result, do_ai_analysis)
                         
                     elif analysis_type == "Committees by Continent and Year":
                         result = st.session_state.analytics_client.get_committees_per_continent_year_count(
@@ -2227,7 +2549,7 @@ class StreamlitPaperAnalytics:
                             years=filters['years']
                         )
                         self.display_dataframe_with_download(result, "Committees by Continent and Year", "committees_cont_year")
-                        self.create_committee_visualizations(result)
+                        self.create_committee_visualizations(result, do_ai_analysis)
                         
                     elif analysis_type == "Committees by Continent":
                         result = st.session_state.analytics_client.get_committees_per_continent_count(
@@ -2235,7 +2557,7 @@ class StreamlitPaperAnalytics:
                             continents=filters['continents']
                         )
                         self.display_dataframe_with_download(result, "Committees by Continent", "committees_cont")
-                        self.create_committee_visualizations(result)
+                        self.create_committee_visualizations(result, do_ai_analysis)
                         
             except Exception as e:
                 st.error(f"Error running analysis: {str(e)}")
