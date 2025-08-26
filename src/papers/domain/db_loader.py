@@ -109,7 +109,7 @@ def get_paper_citations_df(citations_crawler_data_path: Path) -> pl.DataFrame:
     return df_final
   
     
-def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvus, rag: RAG):
+def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvus):
     """
     Loads provided paper data into Vector database
 
@@ -123,11 +123,6 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
     """
     papers = df_data_to_insert.to_dicts()
     
-    def summarize(text: str) -> str:
-        # print(text)
-        response = rag.summarize_single_text(text)
-        print(f"Summary: {response["message"]["content"]}")
-        return response["message"]["content"]
     data = []
     for i, row in enumerate(tqdm(papers, desc="Creating embeddings")):
         
@@ -155,7 +150,6 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
                         countries.append(institution["Country"])
         
         empty_embedding = milvus_client.emb_text("")
-        is_to_be_summarized = tldr and tldr != "" and abstract and abstract != ""
         data.append({
             # "S2_Paper_ID": row["S2 Paper ID"], 
             "Title": title,
@@ -171,8 +165,7 @@ def load_data_to_vector_db(df_data_to_insert: pl.DataFrame, milvus_client: Milvu
             "Countries": countries,
             "KeyConcepts": key_concepts,
             "KeyConceptsVector": milvus_client.emb_text(row["KeyConcepts"]) if row["KeyConcepts"] else empty_embedding,
-            "Conference": row["Conference"],
-            "Summary": summarize(f"Title: {title}. TLDR: {tldr}. Abstract: {abstract}. Key concepts: {key_concepts}") if is_to_be_summarized else title,     
+            "Conference": row["Conference"],  
             "IsCitation": row["IsCitation"]   
         })  
         
@@ -225,11 +218,6 @@ def get_key_concepts(df_abstracts: pl.DataFrame) -> pl.DataFrame:
             
         return enum_keywords
     
-    # def summarize(text: str) -> str:
-    #     # print(text)
-    #     response = rag.summarize_single_text(text)
-    #     print(f"Summary: {response["message"]["content"]}")
-    #     return response["message"]["content"]
     df_kw = df_abstracts.with_columns(
             (
                 pl.col("Title").fill_null("") + " \n " +
@@ -244,43 +232,5 @@ def get_key_concepts(df_abstracts: pl.DataFrame) -> pl.DataFrame:
             .otherwise(None)\
             .alias("KeyConcepts")
     ).select(['Abstract', 'Authors and Institutions', 'TLDR', 'Title', 'Conference', 'Year', 'IsCitation', 'KeyConcepts'])     
-        # pl.when(pl.col("Abstract").is_not_null())\
-        #     .then(pl.col("Abstract").map_elements(extract_keywords, return_dtype=pl.String))\
-        #     .otherwise(None)\
-        #     .alias("Abstract concepts"),
-            
-        # pl.when(pl.col("TLDR").is_not_null())\
-        #     .then(pl.col("TLDR").map_elements(extract_keywords, return_dtype=pl.String))\
-        #     .otherwise(None)\
-        #     .alias("TLDR concepts"),
-        
-        # pl.when(pl.col("Title").is_not_null())\
-        #     .then(pl.col("Title").map_elements(extract_keywords, return_dtype=pl.String))\
-        #     .otherwise(None)\
-        #     .alias("Title concepts"),           
-    # ).with_columns(
-    #     (
-    #         # pl.col("Title concepts").fill_null("") + ", "+\
-    #         pl.col("Abstract concepts").fill_null("") + ", "+\
-    #         pl.col("TLDR concepts").fill_null("")
-    #     ).str.strip_chars(", ").alias("KeyConcepts")
-    # ).with_columns(
-    #     pl.concat_str(
-    #         [   
-    #             "Title: "+pl.col("Title").fill_null(""),
-    #             "TLDR: "+pl.col("TLDR").fill_null(""),                
-    #             "Abstract: "+pl.col("Abstract").fill_null(""),
-    #             "Key concepts: "+pl.col("KeyConcepts").fill_null(""),             
-    #             # f"Title: {pl.col("Title").fill_null("")}",
-    #             # f"TLDR: {pl.col("TLDR").fill_null("")}",                
-    #             # f"Abstract: {pl.col("Abstract").fill_null("")}",
-    #             # f"Key concepts: {pl.col("KeyConcepts").fill_null("")}",
-    #         ],
-    #         separator=". ",
-    #     ).alias("text_to_summarize")         
-    # ).with_columns(
-    #     pl.col("text_to_summarize").map_elements(summarize, return_dtype=pl.String)\
-    #         .alias("Summary")
-    # )
     return df_kw
 
