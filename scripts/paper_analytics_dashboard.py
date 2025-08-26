@@ -163,13 +163,10 @@ class StreamlitPaperAnalytics:
         # Define which filters are needed for each analysis type
         filter_requirements = {
             "Papers by Conference, Continent and Year": ["text","conferences", "years", "continents"],
-            # "Papers by Conference and Continent": ["text", "conferences", "continents"],
             "Citations by Conference, Continent and Year": ["text","conferences", "years", "continents", "cited_continents"],
-            # "Citations by Conference and Continent": ["text", "conferences", "continents", "cited_continents"],            
             "Citations by Conference and Source and Cited Continent": ["text", "conferences", "continents", "cited_continents"],            
             "Committees by Conference, Country and Year": ["conferences", "years"],
             "Committees by Continent and Year": ["conferences", "continents", "years"],
-            # "Committees by Continent": ["conferences", "continents"]
         }
         
         filters = {}
@@ -276,15 +273,6 @@ class StreamlitPaperAnalytics:
             # Display table
             st.dataframe(df_pandas, use_container_width=True, key=f"df_{key}")
             
-            # # Download button
-            # csv = df_pandas.to_csv(index=False)
-            # st.download_button(
-            #     label=f"📥 Download {title} as CSV",
-            #     data=csv,
-            #     file_name=f"{title.lower().replace(' ', '_')}.csv",
-            #     mime="text/csv",
-            #     key=f"download_{key}"
-            # )
         else:
             st.warning("No data found with current filters.")
     
@@ -2050,7 +2038,6 @@ class StreamlitPaperAnalytics:
                     ),
                     height=600 * n_rows,  # Equivalent to 6 * n_rows
                     width=900 * n_cols,   # Increased width to accommodate individual legends
-                    # margin=dict(l=50, r=100, t=80, b=50),  # Adjust margins
                     **legend_configs  # Add all legend configurations
                 )           
                 
@@ -2410,22 +2397,6 @@ class StreamlitPaperAnalytics:
         - Double-check all numbers before finalizing your response
         - If you see a year like "202" or "201", it should be "2021" or "2015" or similar             
         """
-        # SYSTEM_PROMPT = """
-        # You are a data analysis assistant specialized in research publication trends.
-        # You will receive structured tabular or HTML data containing counts of papers published,
-        # categorized by continent, conference, and year.
-
-        # Your role is to:
-        # 1. Interpret the data carefully—look at totals, proportions, changes over time, and differences between categories.
-        # 2. Identify trends (growth, decline, stability), notable peaks or drops, and patterns in the distribution.
-        # 3. Compare categories (e.g., which continent leads in certain years, which conferences have steady or explosive growth, which copnference has more papers of each continent).
-        # 4. Communicate clearly—provide concise bullet points for quick insight, followed by a short narrative summary.
-        # Rules:
-        # - If data covers multiple years, highlight temporal trends.
-        # - If a category is missing or has incomplete data, note it explicitly.
-        # - Do not invent data—only use what is provided.
-        # - Keep the tone analytical yet accessible.
-        # """
         
         individual_results = self._phase1_individual_analysis(df=df, prompt_case=prompt_case)
         final_result = self._phase2_comparative_analysis(individual_results)
@@ -2433,26 +2404,6 @@ class StreamlitPaperAnalytics:
             st.markdown(final_result)
         else:
             print(final_result)
-        
-        # data_str = ""
-        # for conf, group_df in df.group_by("source_conference"):
-        #     print(f"--- {conf} ---")
-        #     data_str = self._format_dataframe_to_markdown(group_df)
-        #     print(data_str)
-
-        #     response = self._call_ollama(model_name="gemma3:4b", system_prompt=SYSTEM_PROMPT, user_content=f"Markdown table:\n{data_str}")
-        #     st.markdown(response)
-
-        
-        # data_str = json.dumps(df.to_dicts(), indent=2)
-        # response = ollama.chat(
-        #     model="mistral",
-        #     messages=[
-        #         {"role": "system", "content": SYSTEM_PROMPT},
-        #         {"role": "user", "content": f"Here is the dataset:\n{data_str}\n\nAnalyze it and provide insights. /no_think"}
-        #     ]
-        # )        
-        # st.markdown(response.message.content)
 
     # Calculate legend positions for each subplot
     def get_legend_position(self, row, col, n_rows, n_cols):
@@ -2484,13 +2435,9 @@ class StreamlitPaperAnalytics:
             "Select Analysis Type",
             [
                 "Papers by Conference, Continent and Year",
-                # "Papers by Conference and Continent",
-                "Citations by Conference, Continent and Year",
-                # "Citations by Conference and Continent",                
-                "Citations by Conference and Source and Cited Continent",                
-                # "Committees by Conference, Country and Year", 
+                "Citations by Conference, Continent and Year",        
+                "Citations by Conference and Source and Cited Continent",    
                 "Committees by Continent and Year",
-                # "Committees by Continent"
             ],
             key="analysis_type_selector"
         )
@@ -2498,13 +2445,9 @@ class StreamlitPaperAnalytics:
         # Show description of selected analysis
         analysis_descriptions = {
             "Papers by Conference, Continent and Year": "Analyze paper counts across conferences, continents and years",
-            # "Papers by Conference and Continent": "Compare paper distribution by conference and continent",
             "Citations by Conference, Continent and Year": "Analyze citation counts across conferences, continents and years",
-            # "Citations by Conference and Continent": "Compare citation distribution by conference and continent",            
-            "Citations by Conference and Source and Cited Continent": "Compare citation distribution by conference and source and cited continent",            
-            # "Committees by Conference, Country and Year": "Track committee member distribution by conference, country, and year",
+            "Citations by Conference and Source and Cited Continent": "Compare citation distribution by conference and source and cited continent",    
             "Committees by Continent and Year": "Analyze committee member trends across continents over time",
-            # "Committees by Continent": "Overview of committee member distribution by continent"            
         }
         
         if analysis_type in analysis_descriptions:
