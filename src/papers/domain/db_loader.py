@@ -6,7 +6,6 @@ from typing import List
 from keybert import KeyBERT 
 from src.papers.io.db import Milvus, Neo4j
 from src.papers.utils.models import Models
-from src.papers.domain.rag import RAG
 import json
 
 def get_extended_crawler_data_df(extended_crawler_data_path: Path, selected_cols: List) -> pl.DataFrame:

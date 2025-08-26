@@ -1,7 +1,6 @@
 from pathlib import Path
 from src.papers.io.db import Milvus, Neo4j, DataType
 from src.papers.domain.db_loader  import get_extended_crawler_data_df, get_paper_citations_df, load_data_to_vector_db, get_key_concepts
-from src.papers.domain.rag import RAG
 from dotenv import load_dotenv
 import polars as pl
 import os
