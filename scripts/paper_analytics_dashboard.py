@@ -169,7 +169,7 @@ class StreamlitPaperAnalytics:
             "Citations by Conference and Source and Cited Continent": ["text", "conferences", "continents", "cited_continents"],            
             "Committees by Conference, Country and Year": ["conferences", "years"],
             "Committees by Continent and Year": ["conferences", "continents", "years"],
-            "Committees by Continent": ["conferences", "continents"]
+            # "Committees by Continent": ["conferences", "continents"]
         }
         
         filters = {}
@@ -1275,6 +1275,7 @@ class StreamlitPaperAnalytics:
                         # Add empty sankey for conferences with no data
                         fig.add_trace(
                             go.Sankey(
+                                textfont=dict(color="rgba(255,255,255,1)", size=1),
                                 node=dict(
                                     pad=15,
                                     thickness=20,
@@ -1309,6 +1310,7 @@ class StreamlitPaperAnalytics:
                     source_indices = []
                     target_indices = []
                     values = []
+                    link_colors = [] 
                     
                     for _, row_data in flow_data.iterrows():
                         source_cont = row_data['source_predominant_continent']
@@ -1322,6 +1324,18 @@ class StreamlitPaperAnalytics:
                             source_indices.append(source_idx)
                             target_indices.append(target_idx)
                             values.append(citation_count)
+                            
+                            # Add link color based on source continent
+                            source_color = continent_colors.get(source_cont, 'rgba(128,128,128,0.4)')
+                            # Make link color slightly more transparent than node color
+                            if 'rgba' in source_color:
+                                # Extract RGB values and make more transparent
+                                rgb_part = source_color.split('rgba(')[1].split(')')[0]
+                                r, g, b, _ = rgb_part.split(',')
+                                link_color = f"rgba({r},{g},{b}, 0.4)"  # More transparent for flows
+                            else:
+                                link_color = source_color
+                            link_colors.append(link_color)                            
                     
                     # Create node colors based on continent
                     node_colors = []
@@ -1348,6 +1362,7 @@ class StreamlitPaperAnalytics:
                     # Add Sankey trace
                     fig.add_trace(
                         go.Sankey(
+                            textfont=dict(color="rgba(255,255,255,1)", size=14),
                             node=dict(
                                 pad=15,
                                 thickness=15,
@@ -1361,6 +1376,7 @@ class StreamlitPaperAnalytics:
                                 source=source_indices,
                                 target=target_indices,
                                 value=values,
+                                color=link_colors,
                                 hovertemplate='%{source.label} → %{target.label}<br>Citations: %{value:,}<extra></extra>'
                             )
                         ),
@@ -1375,7 +1391,7 @@ class StreamlitPaperAnalytics:
                         'xanchor': 'center',
                         'font': {'size': 16}
                     },
-                    font_size=10,
+                    font=dict(size=16, color='black'),
                     height=500 * rows,  # Adjust height based on number of rows
                     margin=dict(l=50, r=50, t=80, b=50),
                     showlegend=False
@@ -1455,6 +1471,7 @@ class StreamlitPaperAnalytics:
                         # Add empty sankey for conferences with no data
                         fig.add_trace(
                             go.Sankey(
+                                textfont=dict(color="rgba(255,255,255,1)", size=14),
                                 node=dict(
                                     pad=15,
                                     thickness=20,
@@ -1489,6 +1506,7 @@ class StreamlitPaperAnalytics:
                     source_indices = []
                     target_indices = []
                     values = []
+                    link_colors = []
                     
                     for _, row_data in flow_data.iterrows():
                         source_cont = row_data['source_predominant_continent']
@@ -1502,6 +1520,19 @@ class StreamlitPaperAnalytics:
                             source_indices.append(source_idx)
                             target_indices.append(target_idx)
                             values.append(citation_count)
+                            
+                            
+                            # Add link color based on source continent
+                            source_color = continent_colors.get(source_cont, 'rgba(128,128,128,0.4)')
+                            # Make link color slightly more transparent than node color
+                            if 'rgba' in source_color:
+                                # Extract RGB values and make more transparent
+                                rgb_part = source_color.split('rgba(')[1].split(')')[0]
+                                r, g, b, _ = rgb_part.split(',')
+                                link_color = f"rgba({r},{g},{b}, 0.4)"  # More transparent for flows
+                            else:
+                                link_color = source_color
+                            link_colors.append(link_color)                                 
                     
                     # Create node colors based on continent
                     node_colors = []
@@ -1528,6 +1559,7 @@ class StreamlitPaperAnalytics:
                     # Add Sankey trace
                     fig.add_trace(
                         go.Sankey(
+                            textfont=dict(color="rgba(255,255,255,1)", size=14),
                             node=dict(
                                 pad=15,
                                 thickness=15,
@@ -1540,6 +1572,7 @@ class StreamlitPaperAnalytics:
                             link=dict(
                                 source=source_indices,
                                 target=target_indices,
+                                color=link_colors,
                                 value=values,
                                 hovertemplate='%{source.label} → %{target.label}<br>Citations: %{value:,}<extra></extra>'
                             )
@@ -1555,7 +1588,7 @@ class StreamlitPaperAnalytics:
                         'xanchor': 'center',
                         'font': {'size': 16}
                     },
-                    font_size=10,
+                    font=dict(size=16, color='black'),
                     height=500 * rows,  # Adjust height based on number of rows
                     margin=dict(l=50, r=50, t=80, b=50),
                     showlegend=False
@@ -2259,10 +2292,10 @@ class StreamlitPaperAnalytics:
         - Even if a section has no findings, explicitly state "No significant findings" for that section.
 
         ## OUTPUT TEMPLATE (MANDATORY) ##
-        1. Trends
-        2. Peaks and drops
-        3. Continental distribution
-        4. Unknown and other continents
+        1. Trends:
+        2. Peaks and drops:
+        3. Continental distribution:
+        4. Unknown and other continents:
 
         ## IMPORTANT ##
         - You must strictly adhere to the output structure above.
@@ -2457,7 +2490,7 @@ class StreamlitPaperAnalytics:
                 "Citations by Conference and Source and Cited Continent",                
                 # "Committees by Conference, Country and Year", 
                 "Committees by Continent and Year",
-                "Committees by Continent"
+                # "Committees by Continent"
             ],
             key="analysis_type_selector"
         )
@@ -2471,7 +2504,7 @@ class StreamlitPaperAnalytics:
             "Citations by Conference and Source and Cited Continent": "Compare citation distribution by conference and source and cited continent",            
             # "Committees by Conference, Country and Year": "Track committee member distribution by conference, country, and year",
             "Committees by Continent and Year": "Analyze committee member trends across continents over time",
-            "Committees by Continent": "Overview of committee member distribution by continent"            
+            # "Committees by Continent": "Overview of committee member distribution by continent"            
         }
         
         if analysis_type in analysis_descriptions:
