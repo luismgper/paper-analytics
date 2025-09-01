@@ -26,7 +26,10 @@ def get_extended_crawler_data_df(extended_crawler_data_path: Path, selected_cols
     # For each file generate a polars dataframe formatted
     for file in json_files:
         # Extract conference name from filename
-        conference = re.sub(r".*/|_extended_data\.json", "", str(file))
+        # conference = re.sub(r".*/|_extended_data\.json", "", str(file))
+        filename = Path(file).name
+        conference = re.sub(r"_extended_data\.json$", "", filename)
+        print(conference)
 
         # Read the file
         df = pl.read_json(file, infer_schema_length=100000)
